@@ -39,6 +39,30 @@
       "severity": "MEDIUM",
       "on_failure": "Update ENROLL_USER: reduce enrollment fee to within 10% of catalog fee",
       "data_sources": ["catalog", "enrollment"]
+    },
+    {
+      "rule_id": "R6",
+      "description": "Student must be fully exam-eligible: fee cleared, attendance met, and marked eligible",
+      "condition": "exam.fee_cleared == 'Y' and exam.min_attendance_pct >= 75 and exam.is_eligible == 'Y'",
+      "severity": "HIGH",
+      "on_failure": "Update EXAM_USER: ensure fee_cleared=Y, min_attendance_pct>=75, and is_eligible=Y for exam access",
+      "data_sources": ["exam"]
+    },
+    {
+      "rule_id": "R7",
+      "description": "Enrollment fee premium over catalog fee must be between 5% and 15%",
+      "condition": "5 <= ((enrollment.fee - catalog.fee) / catalog.fee) * 100 <= 15",
+      "severity": "MEDIUM",
+      "on_failure": "Update ENROLL_USER: enrollment fee must be 5% to 15% higher than catalog fee",
+      "data_sources": ["catalog", "enrollment"]
+    },
+    {
+      "rule_id": "R8",
+      "description": "Total cost (enrollment fee + 10% exam prep) must not exceed 120% of catalog fee",
+      "condition": "(enrollment.fee + catalog.fee * 0.10) <= catalog.fee * 1.20",
+      "severity": "HIGH",
+      "on_failure": "Update ENROLL_USER: reduce enrollment fee — total financial commitment exceeds 120% of catalog fee",
+      "data_sources": ["catalog", "enrollment"]
     }
   ]
 }

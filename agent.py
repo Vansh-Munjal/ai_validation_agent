@@ -18,6 +18,7 @@ import json
 import os
 import time
 from langchain_groq import ChatGroq
+from langsmith import traceable
 from config import GROQ_API_KEY
 from db import get_course_catalog, get_enrollment, get_exam_eligibility
 
@@ -50,10 +51,11 @@ class _Namespace:
         return str(self.__dict__)
 
 
+@traceable(name="eval_condition")
 def _evaluate_condition(condition: str, catalog: dict, enrollment: dict, exam: dict) -> bool:
     """
     Evaluate a rule condition using Python eval().
-    Supports: catalog.fee, enrollment.fee, exam.fee_cleared, exam.attendance, etc.
+    Supports: catalog.fee, enrollment.fee, exam.fee_cleared, exam.min_attendance_pct, etc.
     Safe eval — no builtins allowed.
     """
     ns = {
@@ -67,6 +69,7 @@ def _evaluate_condition(condition: str, catalog: dict, enrollment: dict, exam: d
 
 # ─── Compute actual vs expected values for failed rules ───────────────────────
 
+@traceable(name="compute_comparison")
 def _compute_comparison(condition: str, catalog: dict, enrollment: dict, exam: dict) -> dict:
     """
     For a FAILED condition, evaluate both sides and return:
@@ -105,6 +108,7 @@ def _compute_comparison(condition: str, catalog: dict, enrollment: dict, exam: d
 
 # ─── LLM explanation — single call, no loop ──────────────────────────────────
 
+@traceable(name="llm_explain")
 def _explain(llm, rule: dict, status: str, catalog: dict, enrollment: dict, exam: dict) -> str:
     """Ask the LLM to explain the result in ONE sentence using actual values."""
 
@@ -150,6 +154,7 @@ def _explain(llm, rule: dict, status: str, catalog: dict, enrollment: dict, exam
 
 # ─── Evaluate one rule ────────────────────────────────────────────────────────
 
+@traceable(name="llm_fallback_evaluate")
 def _evaluate_with_llm(llm, rule: dict, catalog: dict, enrollment: dict, exam: dict) -> tuple:
     """
     Fallback: ask LLM to evaluate a condition that Python cannot parse.
@@ -194,6 +199,7 @@ def _evaluate_with_llm(llm, rule: dict, catalog: dict, enrollment: dict, exam: d
         return "ERROR", f"LLM fallback also failed: {str(e)[:100]}"
 
 
+@traceable(name="evaluate_rule", tags=["validation"])
 def evaluate_single_rule(course_id: str, rule: dict, llm) -> dict:
     """
     Evaluate ONE rule for a course:
