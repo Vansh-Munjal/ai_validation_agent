@@ -1,0 +1,44 @@
+{
+  "rules": [
+    {
+      "rule_id": "R1",
+      "description": "Catalog fee must be exactly Rs.500 less than enrollment fee",
+      "condition": "catalog.fee == enrollment.fee - 500",
+      "severity": "HIGH",
+      "on_failure": "Update catalog fee to be exactly Rs.500 less than the enrollment fee",
+      "data_sources": ["catalog", "enrollment"]
+    },
+    {
+      "rule_id": "R2",
+      "description": "Exam fee must be cleared before enrollment is valid",
+      "condition": "exam.fee_cleared == 'Y'",
+      "severity": "HIGH",
+      "on_failure": "Update EXAM_USER: set fee_cleared = Y after student pays exam fee",
+      "data_sources": ["exam"]
+    },
+    {
+      "rule_id": "R3",
+      "description": "Enrollment fee must be greater than Rs.5000",
+      "condition": "enrollment.fee > 5000",
+      "severity": "MEDIUM",
+      "on_failure": "Update ENROLL_USER: enrollment fee must be set above Rs.5000",
+      "data_sources": ["enrollment"]
+    },
+    {
+      "rule_id": "R4",
+      "description": "Student attendance must meet minimum 75% requirement",
+      "condition": "exam.min_attendance_pct >= 75",
+      "severity": "HIGH",
+      "on_failure": "Update EXAM_USER: record correct attendance — must be at least 75%",
+      "data_sources": ["exam"]
+    },
+    {
+      "rule_id": "R5",
+      "description": "Enrollment fee must not exceed catalog fee by more than 10%",
+      "condition": "enrollment.fee <= catalog.fee * 1.10",
+      "severity": "MEDIUM",
+      "on_failure": "Update ENROLL_USER: reduce enrollment fee to within 10% of catalog fee",
+      "data_sources": ["catalog", "enrollment"]
+    }
+  ]
+}

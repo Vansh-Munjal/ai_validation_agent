@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="AI Validation Agent — validate course data across Oracle schemas using dynamic JSON rules." />
+  <title>AI Validation Agent</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Tokens ─────────────────────────────────────────────────────── */
+    :root {
+      --bg:         #080b14;
+      --surface:    #0e1120;
+      --surface2:   #141827;
+      --border:     rgba(99,120,255,.15);
+      --border-hi:  rgba(99,120,255,.5);
+
+      --accent:     #6378ff;
+      --accent2:    #a78bfa;
+      --glow:       rgba(99,120,255,.22);
+
+      --pass:       #10d9a0;
+      --pass-bg:    rgba(16,217,160,.1);
+      --pass-brd:   rgba(16,217,160,.3);
+      --fail:       #ff5272;
+      --fail-bg:    rgba(255,82,114,.1);
+      --fail-brd:   rgba(255,82,114,.3);
+      --warn:       #fbbf24;
+      --warn-bg:    rgba(251,191,36,.1);
+      --warn-brd:   rgba(251,191,36,.3);
+
+      --text:       #e2e6f3;
+      --text2:      #8892b0;
+      --text3:      #404870;
+
+      --r:          16px;
+      --r-sm:       10px;
+      --r-xs:       6px;
+    }
+
+    /* ── Reset ───────────────────────────────────────────────────────── */
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth}
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────── */
+    .layout { display: flex; min-height: 100vh; }
+
+    .sidebar {
+      width: 240px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 28px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-icon {
+      width: 34px; height: 34px;
+      border-radius: 9px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+    .brand-name {
+      font-size: .85rem;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+    .brand-sub {
+      font-size: .65rem;
+      color: var(--text2);
+      font-weight: 400;
+    }
+
+    .sidebar-section-label {
+      font-size: .62rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--text3);
+      margin-bottom: 8px;
+    }
+
+    .quick-btns {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .quick-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      color: var(--text2);
+      font-size: .83rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .2s;
+      font-family: inherit;
+      width: 100%;
+      text-align: left;
+    }
+    .quick-btn:hover { border-color: var(--accent); color: var(--text); background: rgba(99,120,255,.08); }
+    .quick-btn.active { border-color: var(--accent); color: var(--accent); background: var(--glow); }
+    .quick-btn-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--text3);
+      flex-shrink: 0;
+    }
+    .quick-btn.c001 .quick-btn-dot { background: var(--pass); }
+    .quick-btn.c002 .quick-btn-dot { background: var(--warn); }
+    .quick-btn.c003 .quick-btn-dot { background: var(--fail); }
+
+    .sidebar-info {
+      margin-top: auto;
+      padding: 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      font-size: .72rem;
+      color: var(--text2);
+      line-height: 1.6;
+    }
+    .sidebar-info .si-tag {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: var(--glow);
+      color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .65rem;
+      margin-bottom: 6px;
+    }
+
+    /* ── Main Content ─────────────────────────────────────────────────── */
+    .main {
+      flex: 1;
+      padding: 36px 40px;
+      overflow-x: hidden;
+    }
+
+    /* ── Page Header ──────────────────────────────────────────────────── */
+    .page-header {
+      margin-bottom: 32px;
+      animation: fadeDown .5s ease both;
+    }
+    .page-header h1 {
+      font-size: clamp(1.5rem, 3vw, 2rem);
+      font-weight: 800;
+      background: linear-gradient(135deg, #e2e6f3 0%, #6378ff 55%, #10d9a0 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 6px;
+    }
+    .page-header p { color: var(--text2); font-size: .9rem; }
+
+    /* ── Input Row ───────────────────────────────────────────────────── */
+    .input-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 20px 24px;
+      margin-bottom: 28px;
+      animation: fadeUp .5s ease .1s both;
+    }
+    .input-label { font-size: .78rem; color: var(--text2); font-weight: 500; white-space: nowrap; }
+    input[type="text"] {
+      flex: 1;
+      min-width: 160px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .9rem;
+      padding: 11px 16px;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    input[type="text"]::placeholder { color: var(--text3); }
+    input[type="text"]:focus { border-color: var(--border-hi); box-shadow: 0 0 0 3px var(--glow); }
+
+    .btn-validate {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      font-size: .88rem;
+      border: none;
+      border-radius: var(--r-sm);
+      padding: 11px 28px;
+      cursor: pointer;
+      transition: transform .15s, box-shadow .15s, filter .15s;
+      display: flex; align-items: center; gap: 8px;
+      white-space: nowrap;
+    }
+    .btn-validate:hover { transform: translateY(-1px); box-shadow: 0 8px 24px var(--glow); filter: brightness(1.1); }
+    .btn-validate:active { transform: translateY(0); }
+
+    /* Loading spinner */
+    .spinner {
+      display: none;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+    .loading .spinner { display: block; }
+    .loading .btn-text { display: none; }
+
+    /* ── Error ───────────────────────────────────────────────────────── */
+    .error-box {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--fail-bg);
+      border: 1px solid var(--fail-brd);
+      border-radius: var(--r-sm);
+      padding: 14px 18px;
+      color: var(--fail);
+      font-size: .88rem;
+      margin-bottom: 20px;
+      animation: fadeUp .3s ease;
+    }
+
+    /* ── Stats Row ───────────────────────────────────────────────────── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+      animation: fadeUp .5s ease .15s both;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 16px 18px;
+    }
+    .stat-label { font-size: .65rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text3); margin-bottom: 6px; }
+    .stat-value { font-size: 1.5rem; font-weight: 800; }
+    .stat-value.pass { color: var(--pass); }
+    .stat-value.fail { color: var(--fail); }
+    .stat-value.warn { color: var(--warn); }
+    .stat-value.accent { color: var(--accent); }
+
+    /* ── Grid layout for results ─────────────────────────────────────── */
+    .results-grid {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    @media (max-width: 900px) { .results-grid { grid-template-columns: 1fr; } }
+
+    /* ── Panel (generic card) ─────────────────────────────────────────── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 22px 24px;
+    }
+    .panel-title {
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--text3);
+      margin-bottom: 18px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .panel-title::before {
+      content: '';
+      display: inline-block;
+      width: 3px; height: 13px;
+      border-radius: 2px;
+      background: var(--accent);
+    }
+
+    /* ── Health Score ─────────────────────────────────────────────────── */
+    .health-block {
+      text-align: center;
+      padding: 20px 0 14px;
+      margin-bottom: 16px;
+    }
+    .health-ring-wrap {
+      position: relative;
+      width: 120px; height: 120px;
+      margin: 0 auto 12px;
+    }
+    .health-ring-wrap svg { transform: rotate(-90deg); }
+    .health-ring-bg { fill: none; stroke: var(--surface2); stroke-width: 8; }
+    .health-ring-fg {
+      fill: none;
+      stroke-width: 8;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 1s cubic-bezier(.4,0,.2,1);
+    }
+    .health-ring-fg.healthy { stroke: var(--pass); }
+    .health-ring-fg.warning { stroke: var(--warn); }
+    .health-ring-fg.critical { stroke: var(--fail); }
+    .health-center {
+      position: absolute;
+      inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+    }
+    .health-pct { font-size: 1.4rem; font-weight: 800; line-height: 1; }
+    .health-pct.healthy { color: var(--pass); }
+    .health-pct.warning { color: var(--warn); }
+    .health-pct.critical { color: var(--fail); }
+    .health-lbl { font-size: .58rem; font-weight: 600; letter-spacing: .08em; color: var(--text2); text-transform: uppercase; }
+
+    .health-status {
+      font-size: .9rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .health-status.healthy { color: var(--pass); }
+    .health-status.warning { color: var(--warn); }
+    .health-status.critical { color: var(--fail); }
+    .health-meta { font-size: .78rem; color: var(--text2); }
+
+    /* ── Schema Data ─────────────────────────────────────────────────── */
+    .schema-block {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .schema-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .62rem;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: .06em;
+      margin-bottom: 10px;
+    }
+    .schema-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+      font-size: .78rem;
+    }
+    .schema-row:last-child { border-bottom: none; }
+    .schema-key { color: var(--text2); }
+    .schema-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .75rem;
+      color: var(--text);
+    }
+    .schema-val.hi { color: var(--warn); font-weight: 600; }
+    .schema-val.pass { color: var(--pass); }
+    .schema-val.fail { color: var(--fail); }
+
+    /* ── Recommendations ────────────────────────────────────────────── */
+    .rec-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-xs);
+      margin-bottom: 8px;
+      font-size: .8rem;
+      color: var(--text2);
+    }
+    .rec-item.healthy { border-color: var(--pass-brd); color: var(--pass); }
+    .rec-item .rec-icon { font-size: .9rem; flex-shrink: 0; }
+
+    /* ── Rule Cards ──────────────────────────────────────────────────── */
+    .rule-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 18px 20px;
+      margin-bottom: 12px;
+      animation: fadeUp .4s ease both;
+      transition: border-color .2s;
+    }
+    .rule-card:hover { border-color: var(--border-hi); }
+    .rule-card.pass { border-left: 3px solid var(--pass); }
+    .rule-card.fail { border-left: 3px solid var(--fail); }
+    .rule-card.error { border-left: 3px solid var(--warn); }
+
+    .rule-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .rule-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    .tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .68rem;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 4px;
+    }
+    .tag-id { background: var(--glow); color: var(--accent); border: 1px solid var(--border); }
+    .tag-src { background: rgba(255,255,255,.04); color: var(--text2); border: 1px solid var(--border); }
+    .tag-sev-high { background: var(--fail-bg); color: var(--fail); border: 1px solid var(--fail-brd); }
+    .tag-sev-medium { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-brd); }
+    .tag-sev-low { background: var(--glow); color: var(--accent); border: 1px solid var(--border); }
+
+    .status-pill {
+      display: flex; align-items: center; gap: 5px;
+      font-size: .72rem; font-weight: 700;
+      padding: 4px 12px; border-radius: 999px;
+    }
+    .status-pill.pass { background: var(--pass-bg); color: var(--pass); border: 1px solid var(--pass-brd); }
+    .status-pill.fail { background: var(--fail-bg); color: var(--fail); border: 1px solid var(--fail-brd); }
+    .status-pill.error { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-brd); }
+
+    .rule-desc { font-size: .88rem; font-weight: 500; margin-bottom: 8px; }
+
+    .rule-condition {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .75rem;
+      color: var(--text2);
+      background: rgba(0,0,0,.3);
+      padding: 8px 12px;
+      border-radius: var(--r-xs);
+      border-left: 3px solid var(--accent);
+      margin-bottom: 12px;
+    }
+
+    /* Actual vs Expected for FAIL ─────────────────────────────────── */
+    .comparison-row {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .cmp-box {
+      border-radius: var(--r-xs);
+      padding: 10px 14px;
+    }
+    .cmp-box.actual {
+      background: var(--fail-bg);
+      border: 1px solid var(--fail-brd);
+    }
+    .cmp-box.expected {
+      background: var(--pass-bg);
+      border: 1px solid var(--pass-brd);
+    }
+    .cmp-label {
+      font-size: .6rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+    .cmp-box.actual .cmp-label { color: var(--fail); }
+    .cmp-box.expected .cmp-label { color: var(--pass); }
+    .cmp-expr {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .7rem;
+      color: var(--text2);
+      margin-bottom: 3px;
+    }
+    .cmp-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+    .cmp-box.actual .cmp-value { color: var(--fail); }
+    .cmp-box.expected .cmp-value { color: var(--pass); }
+    .cmp-arrow {
+      font-size: 1.1rem;
+      color: var(--text3);
+      text-align: center;
+    }
+
+    /* LLM Reason ────────────────────────────────────────────────────── */
+    .reason-box {
+      display: flex; align-items: flex-start; gap: 8px;
+      background: rgba(0,0,0,.2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-xs);
+      padding: 10px 12px;
+      font-size: .8rem;
+      color: var(--text2);
+      margin-bottom: 10px;
+    }
+    .reason-icon { font-size: .9rem; flex-shrink: 0; }
+
+    /* On-failure ────────────────────────────────────────────────────── */
+    .fix-box {
+      display: flex; align-items: flex-start; gap: 8px;
+      background: var(--fail-bg);
+      border: 1px solid var(--fail-brd);
+      border-radius: var(--r-xs);
+      padding: 9px 12px;
+      font-size: .78rem;
+      color: var(--fail);
+    }
+
+    /* ── Animations ──────────────────────────────────────────────────── */
+    @keyframes fadeDown { from{opacity:0;transform:translateY(-16px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes fadeUp   { from{opacity:0;transform:translateY(12px)}  to{opacity:1;transform:translateY(0)} }
+    @keyframes spin     { to{transform:rotate(360deg)} }
+    @keyframes pulse    { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── Scrollbar ───────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--surface); }
+    ::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 3px; }
+
+    /* ── Footer ──────────────────────────────────────────────────────── */
+    .footer {
+      margin-top: 48px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      font-size: .7rem;
+      color: var(--text3);
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .footer span { display: flex; align-items: center; gap: 5px; }
+    .footer .dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 2s infinite;
+    }
+  </style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- ── Sidebar ─────────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-icon">🛡</div>
+      <div>
+        <div class="brand-name">Validation<br>Agent</div>
+        <div class="brand-sub">AI · Oracle · Phase 3</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="sidebar-section-label">Quick Select</div>
+      <div class="quick-btns">
+        <button class="quick-btn c001 {{ 'active' if course_id == 'C001' else '' }}"
+                onclick="setCourse('C001')">
+          <span class="quick-btn-dot"></span>
+          <div>
+            <div style="font-size:.8rem;font-weight:600;">C001</div>
+            <div style="font-size:.65rem;color:var(--text3);">Python Basics</div>
+          </div>
+        </button>
+        <button class="quick-btn c002 {{ 'active' if course_id == 'C002' else '' }}"
+                onclick="setCourse('C002')">
+          <span class="quick-btn-dot"></span>
+          <div>
+            <div style="font-size:.8rem;font-weight:600;">C002</div>
+            <div style="font-size:.65rem;color:var(--text3);">Data Science Adv.</div>
+          </div>
+        </button>
+        <button class="quick-btn c003 {{ 'active' if course_id == 'C003' else '' }}"
+                onclick="setCourse('C003')">
+          <span class="quick-btn-dot"></span>
+          <div>
+            <div style="font-size:.8rem;font-weight:600;">C003</div>
+            <div style="font-size:.65rem;color:var(--text3);">ML Intro</div>
+          </div>
+        </button>
+      </div>
+    </div>
+
+    <div>
+      <div class="sidebar-section-label">System Info</div>
+      <div class="sidebar-info">
+        <div class="si-tag">ORACLE FREE 23c</div>
+        <div>3 schemas · 3 tables</div>
+        <div style="margin-top:4px;">CATALOG_USER</div>
+        <div>ENROLL_USER</div>
+        <div>EXAM_USER</div>
+        <div style="margin-top:8px;font-size:.65rem;">LLM: Groq · Llama 3.1 8B</div>
+        <div style="font-size:.65rem;">Eval: Python eval()</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main ──────────────────────────────────────────────────────────── -->
+  <main class="main">
+
+    <!-- Header -->
+    <div class="page-header">
+      <h1>Course Data Validator</h1>
+      <p>Validate course records across 3 independent Oracle schemas using a dynamic JSON rulebook.</p>
+    </div>
+
+    <!-- Input Row -->
+    <form id="validateForm" method="POST" action="/" onsubmit="startLoading()">
+      <div class="input-row">
+        <span class="input-label">Course ID</span>
+        <input
+          id="course_id_input"
+          type="text"
+          name="course_id"
+          placeholder="e.g. C001"
+          value="{{ course_id or '' }}"
+          autocomplete="off"
+          required
+          style="max-width:220px;"
+        />
+        <button id="validateBtn" type="submit" class="btn-validate">
+          <span class="spinner"></span>
+          <span class="btn-text">▶ Validate</span>
+        </button>
+        <span style="font-size:.78rem;color:var(--text3);">or use Quick Select →</span>
+      </div>
+    </form>
+
+    <!-- Error -->
+    {% if error %}
+    <div class="error-box">⚠ {{ error }}</div>
+    {% endif %}
+
+    <!-- Stats Row -->
+    {% if results %}
+    {% set fail_count = results | selectattr("status", "ne", "PASS") | list | count %}
+    {% set pass_count = results | selectattr("status", "equalto", "PASS") | list | count %}
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Course</div>
+        <div class="stat-value accent" style="font-family:'JetBrains Mono',monospace;font-size:1.3rem;">{{ course_id }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Rules</div>
+        <div class="stat-value accent">{{ results | length }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Passed</div>
+        <div class="stat-value pass">{{ pass_count }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Failed</div>
+        <div class="stat-value fail">{{ fail_count }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Health</div>
+        {% if report %}
+        <div class="stat-value {{ report.overall_status | lower }}">{{ report.health_score }}%</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Two-column results layout -->
+    <div class="results-grid">
+
+      <!-- LEFT: Schema data + Health score + Recommendations -->
+      <div style="display:flex;flex-direction:column;gap:16px;">
+
+        <!-- Health Score -->
+        {% if report %}
+        {% set sc = report.overall_status | lower %}
+        <div class="panel" style="animation: fadeUp .4s ease .2s both;">
+          <div class="panel-title">Health Score</div>
+          <div class="health-block">
+            <div class="health-ring-wrap">
+              <svg width="120" height="120" viewBox="0 0 120 120">
+                <circle class="health-ring-bg" cx="60" cy="60" r="50"/>
+                <circle
+                  class="health-ring-fg {{ sc }}"
+                  cx="60" cy="60" r="50"
+                  stroke-dasharray="314.16"
+                  stroke-dashoffset="{{ 314.16 * (1 - report.health_score / 100) | round(2) }}"
+                  id="healthRing"
+                />
+              </svg>
+              <div class="health-center">
+                <div class="health-pct {{ sc }}">{{ report.health_score | int }}%</div>
+                <div class="health-lbl">score</div>
+              </div>
+            </div>
+            <div class="health-status {{ sc }}">{{ report.overall_status }}</div>
+            <div class="health-meta">{{ report.passed_count }} of {{ report.total_rules }} rules passed</div>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Schema Data -->
+        {% if catalog and enrollment %}
+        <div class="panel" style="animation: fadeUp .4s ease .25s both;">
+          <div class="panel-title">Oracle Data Snapshot</div>
+
+          <!-- CATALOG_USER -->
+          <div class="schema-block">
+            <div class="schema-name">📚 CATALOG_USER · COURSE_CATALOG</div>
+            <div class="schema-row"><span class="schema-key">course_id</span><span class="schema-val">{{ catalog.course_id }}</span></div>
+            <div class="schema-row"><span class="schema-key">course_name</span><span class="schema-val">{{ catalog.course_name }}</span></div>
+            <div class="schema-row"><span class="schema-key">fee</span><span class="schema-val hi">₹ {{ catalog.fee }}</span></div>
+          </div>
+
+          <!-- ENROLL_USER -->
+          <div class="schema-block">
+            <div class="schema-name">📋 ENROLL_USER · ENROLLMENT</div>
+            <div class="schema-row"><span class="schema-key">enrollment_id</span><span class="schema-val">{{ enrollment.enrollment_id }}</span></div>
+            <div class="schema-row"><span class="schema-key">student_name</span><span class="schema-val">{{ enrollment.student_name }}</span></div>
+            <div class="schema-row"><span class="schema-key">fee</span><span class="schema-val hi">₹ {{ enrollment.fee }}</span></div>
+          </div>
+
+          <!-- EXAM_USER -->
+          {% if exam %}
+          <div class="schema-block">
+            <div class="schema-name">🎓 EXAM_USER · EXAM_ELIGIBILITY</div>
+            <div class="schema-row">
+              <span class="schema-key">is_eligible</span>
+              <span class="schema-val {{ 'pass' if exam.is_eligible == 'Y' else 'fail' }}">
+                {{ '✓ YES' if exam.is_eligible == 'Y' else '✗ NO' }}
+              </span>
+            </div>
+            <div class="schema-row">
+              <span class="schema-key">attendance</span>
+              <span class="schema-val {{ 'pass' if exam.min_attendance_pct >= 75 else 'fail' }}">
+                {{ exam.min_attendance_pct }}%
+              </span>
+            </div>
+            <div class="schema-row">
+              <span class="schema-key">fee_cleared</span>
+              <span class="schema-val {{ 'pass' if exam.fee_cleared == 'Y' else 'fail' }}">
+                {{ '✓ YES' if exam.fee_cleared == 'Y' else '✗ NO' }}
+              </span>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Recommendations -->
+        {% if report and report.recommendations %}
+        <div class="panel" style="animation: fadeUp .4s ease .3s both;">
+          <div class="panel-title">📌 Recommendations</div>
+          {% for rec in report.recommendations %}
+          <div class="rec-item {{ 'healthy' if rec.startswith('✓') else '' }}">
+            <span class="rec-icon">{{ '✅' if rec.startswith('✓') else '💡' }}</span>
+            <span>{{ rec }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+      </div><!-- /LEFT -->
+
+      <!-- RIGHT: Rule Cards -->
+      <div>
+        <div class="panel" style="animation: fadeUp .4s ease .2s both;">
+          <div class="panel-title">Rule Evaluation — {{ results | length }} rules</div>
+
+          {% for r in results %}
+          {% set card_class = 'pass' if r.status == 'PASS' else ('error' if 'ERROR' in r.status else 'fail') %}
+          <div class="rule-card {{ card_class }}" style="animation-delay: {{ loop.index0 * 0.08 }}s;">
+
+            <!-- Top row -->
+            <div class="rule-top">
+              <div class="rule-left">
+                <span class="tag tag-id">{{ r.rule_id }}</span>
+                <span class="tag tag-sev-{{ r.severity | lower }}">{{ r.severity }}</span>
+                {% if r.sources %}
+                  {% for src in r.sources %}<span class="tag tag-src">{{ src }}</span>{% endfor %}
+                {% endif %}
+              </div>
+              <div class="status-pill {{ card_class }}">
+                {{ '✓ PASS' if r.status == 'PASS' else ('⚠ ERROR' if 'ERROR' in r.status else '✗ FAIL') }}
+              </div>
+            </div>
+
+            <!-- Description -->
+            <div class="rule-desc">{{ r.description }}</div>
+
+            <!-- Condition -->
+            <div class="rule-condition">if {{ r.condition }}</div>
+
+            <!-- ★ Actual vs Expected (only on FAIL with comparison data) -->
+            {% if r.status != 'PASS' and r.comparison and r.comparison.lhs_val is defined %}
+            <div class="comparison-row">
+              <div class="cmp-box actual">
+                <div class="cmp-label">Current Value (Actual)</div>
+                <div class="cmp-expr">{{ r.comparison.lhs_expr }}</div>
+                <div class="cmp-value">{{ r.comparison.lhs_val }}</div>
+              </div>
+              <div class="cmp-arrow">{{ r.comparison.operator }}<br>?</div>
+              <div class="cmp-box expected">
+                <div class="cmp-label">Required Value (Expected)</div>
+                <div class="cmp-expr">{{ r.comparison.rhs_expr }}</div>
+                <div class="cmp-value">{{ r.comparison.rhs_val }}</div>
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- LLM Reason -->
+            <div class="reason-box">
+              <span class="reason-icon">🤖</span>
+              <span>{{ r.reason }}</span>
+            </div>
+
+            <!-- On Failure -->
+            {% if r.status != 'PASS' %}
+            <div class="fix-box">
+              <span>🔧</span>
+              <span><strong>Fix:</strong> {{ r.on_failure }}</span>
+            </div>
+            {% endif %}
+
+          </div>
+          {% endfor %}
+
+        </div><!-- /panel -->
+      </div><!-- /RIGHT -->
+
+    </div><!-- /results-grid -->
+    {% endif %}
+
+    <!-- Empty state when no results yet -->
+    {% if not results and not error %}
+    <div style="text-align:center; padding:80px 20px; color:var(--text3); animation: fadeUp .6s ease;">
+      <div style="font-size:3rem; margin-bottom:16px;">🛡</div>
+      <div style="font-size:1rem; font-weight:600; color:var(--text2); margin-bottom:8px;">Ready to validate</div>
+      <div style="font-size:.85rem;">Enter a Course ID above or pick one from the sidebar</div>
+    </div>
+    {% endif %}
+
+    <!-- Footer -->
+    <div class="footer">
+      <span><span class="dot"></span> 3 Oracle Schemas</span>
+      <span>·</span>
+      <span>5 Rules · JSON Rulebook</span>
+      <span>·</span>
+      <span>Python eval() engine</span>
+      <span>·</span>
+      <span>Groq LLM · Llama 3.1 8B</span>
+      <span>·</span>
+      <span>Phase 3</span>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  // Quick course select
+  function setCourse(id) {
+    document.getElementById('course_id_input').value = id;
+    document.getElementById('validateForm').submit();
+    startLoading();
+  }
+
+  // Loading state
+  function startLoading() {
+    const btn = document.getElementById('validateBtn');
+    btn.classList.add('loading');
+    btn.disabled = true;
+  }
+
+  // Animate health ring on load
+  window.addEventListener('DOMContentLoaded', () => {
+    const ring = document.getElementById('healthRing');
+    if (ring) {
+      const target = parseFloat(ring.getAttribute('stroke-dashoffset'));
+      ring.style.strokeDashoffset = '314.16';
+      setTimeout(() => { ring.style.strokeDashoffset = target; }, 100);
+    }
+  });
+</script>
+
+</body>
+</html>
