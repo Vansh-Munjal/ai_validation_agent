@@ -172,9 +172,9 @@ def setup_enroll_schema():
             raise
 
     rows = [
-        (1, "C001", "Alice",   6000),   # ← 6000 ≠ catalog's 5000 → FAIL R1
-        (2, "C002", "Bob",     8000),   # ← 8000 == catalog's 8000 → PASS R1
-        (3, "C003", "Charlie", 12000),  # ← matches
+        (1, "C001", "Alice",   6500),   # ← 6500 - 5000 = 1500 → PASS R1 (any_course)
+        (2, "C002", "Bob",     8000),   # ← 8000 == catalog's 8000 → diff=0, FAIL R1
+        (3, "C003", "Charlie", 12000),  # ← 12000 == catalog's 12000 → diff=0, FAIL R1
     ]
     for row in rows:
         try:
@@ -192,7 +192,7 @@ def setup_enroll_schema():
     conn.commit()
     conn.close()
     print("  ✓ Sample data inserted into ENROLL_USER.ENROLLMENT")
-    print("    1 | C001 | Alice   | fee = 6000  ← MISMATCH with catalog (5000)")
+    print("    1 | C001 | Alice   | fee = 6500  ← diff=1500 vs catalog (5000) → PASS R1")
     print("    2 | C002 | Bob     | fee = 8000")
     print("    3 | C003 | Charlie | fee = 12000\n")
 
@@ -273,8 +273,9 @@ if __name__ == "__main__":
     print("=" * 55)
     print("✅ All schemas ready!")
     print()
-    print("Expected validation results:")
-    print("  C001 → ❌ FAIL  (catalog fee 5000 ≠ enrollment fee 6000)")
-    print("  C002 → ✅ PASS  (both fees = 8000)")
-    print("  C003 → ✅ PASS  (both fees = 12000)")
+    print("Expected R1 (any_course) results:")
+    print("  C001 → ✅ PASS R1  (enrollment=6500, catalog=5000, diff=1500 ✔)")
+    print("  C002 → ❌ FAIL R1  (enrollment=8000, catalog=8000, diff=0)")
+    print("  C003 → ❌ FAIL R1  (enrollment=12000, catalog=12000, diff=0)")
+    print("  Overall R1 → ✅ PASS (at least one course satisfies the rule)")
     print("=" * 55)

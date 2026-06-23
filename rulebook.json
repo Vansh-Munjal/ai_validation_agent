@@ -2,67 +2,21 @@
   "rules": [
     {
       "rule_id": "R1",
-      "description": "Catalog fee must be exactly Rs.500 less than enrollment fee",
-      "condition": "catalog.fee == enrollment.fee - 500",
+      "type": "arithmetic",
+      "description": "Complex fee validation: enrollment must be exactly Rs.1500 above catalog fee, pass modulo/divisibility checks, stay within 1.0–1.5× ratio, and meet minimum 75% attendance threshold",
+      "condition": "(enrollment.fee - catalog.fee) == 1500 and (enrollment.fee + catalog.fee) // 2 == catalog.fee + 750 and (enrollment.fee - catalog.fee) * 2 // 3 == 1000 and enrollment.fee % 500 == 0 and catalog.fee ** 0 == 1 and (exam.min_attendance_pct * enrollment.fee) / 100 >= catalog.fee - 200 and enrollment.fee / catalog.fee > 1 and enrollment.fee / catalog.fee <= 1.5 and enrollment.fee - catalog.fee != 0 and 75 <= exam.min_attendance_pct <= 100",
       "severity": "HIGH",
-      "on_failure": "Update catalog fee to be exactly Rs.500 less than the enrollment fee",
-      "data_sources": ["catalog", "enrollment"]
+      "on_failure": "Fix enrollment fee, attendance, or fee ratio — all arithmetic sub-checks must pass",
+      "data_sources": ["catalog", "enrollment", "exam"]
     },
     {
       "rule_id": "R2",
-      "description": "Exam fee must be cleared before enrollment is valid",
-      "condition": "exam.fee_cleared == 'Y'",
+      "type": "english",
+      "description": "Exam eligibility conditional waiver: If the course name contains 'Basics' or 'Intro', the student is eligible if they have at least 75% attendance (even if fee is not cleared). For all other courses, the student must have both cleared the exam fee (fee_cleared='Y') and be marked eligible (is_eligible='Y').",
+      "condition": "Check if the course name contains 'Basics' or 'Intro'. If yes, verify attendance is 75% or higher. If no, verify that the student has paid the exam fee and is eligible.",
       "severity": "HIGH",
-      "on_failure": "Update EXAM_USER: set fee_cleared = Y after student pays exam fee",
-      "data_sources": ["exam"]
-    },
-    {
-      "rule_id": "R3",
-      "description": "Enrollment fee must be greater than Rs.5000",
-      "condition": "enrollment.fee > 5000",
-      "severity": "MEDIUM",
-      "on_failure": "Update ENROLL_USER: enrollment fee must be set above Rs.5000",
-      "data_sources": ["enrollment"]
-    },
-    {
-      "rule_id": "R4",
-      "description": "Student attendance must meet minimum 75% requirement",
-      "condition": "exam.min_attendance_pct >= 75",
-      "severity": "HIGH",
-      "on_failure": "Update EXAM_USER: record correct attendance — must be at least 75%",
-      "data_sources": ["exam"]
-    },
-    {
-      "rule_id": "R5",
-      "description": "Enrollment fee must not exceed catalog fee by more than 10%",
-      "condition": "enrollment.fee <= catalog.fee * 1.10",
-      "severity": "MEDIUM",
-      "on_failure": "Update ENROLL_USER: reduce enrollment fee to within 10% of catalog fee",
-      "data_sources": ["catalog", "enrollment"]
-    },
-    {
-      "rule_id": "R6",
-      "description": "Student must be fully exam-eligible: fee cleared, attendance met, and marked eligible",
-      "condition": "exam.fee_cleared == 'Y' and exam.min_attendance_pct >= 75 and exam.is_eligible == 'Y'",
-      "severity": "HIGH",
-      "on_failure": "Update EXAM_USER: ensure fee_cleared=Y, min_attendance_pct>=75, and is_eligible=Y for exam access",
-      "data_sources": ["exam"]
-    },
-    {
-      "rule_id": "R7",
-      "description": "Enrollment fee premium over catalog fee must be between 5% and 15%",
-      "condition": "5 <= ((enrollment.fee - catalog.fee) / catalog.fee) * 100 <= 15",
-      "severity": "MEDIUM",
-      "on_failure": "Update ENROLL_USER: enrollment fee must be 5% to 15% higher than catalog fee",
-      "data_sources": ["catalog", "enrollment"]
-    },
-    {
-      "rule_id": "R8",
-      "description": "Total cost (enrollment fee + 10% exam prep) must not exceed 120% of catalog fee",
-      "condition": "(enrollment.fee + catalog.fee * 0.10) <= catalog.fee * 1.20",
-      "severity": "HIGH",
-      "on_failure": "Update ENROLL_USER: reduce enrollment fee — total financial commitment exceeds 120% of catalog fee",
-      "data_sources": ["catalog", "enrollment"]
+      "on_failure": "Ensure attendance is >= 75% for introductory courses, or clear fees and mark eligible for advanced courses",
+      "data_sources": ["catalog", "exam"]
     }
   ]
 }

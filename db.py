@@ -68,6 +68,24 @@ def get_exam_connection():
 #  Query functions — each talks to its own schema
 # ─────────────────────────────────────────────────────────────────────────────
 
+def get_all_course_ids():
+    """
+    Fetch all course IDs from CATALOG_USER.COURSE_CATALOG.
+
+    Used by 'any_course' scoped rules to iterate over every course
+    and check whether the rule passes for at least one of them.
+
+    Returns a list of course_id strings, e.g. ["C001", "C002", "C003"].
+    """
+    conn = get_catalog_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT course_id FROM course_catalog ORDER BY course_id")
+        return [row[0] for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
 def get_course_catalog(course_id):
     """
     Fetch course record from CATALOG_USER.COURSE_CATALOG.
