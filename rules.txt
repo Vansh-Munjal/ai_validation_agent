@@ -1,0 +1,22 @@
+# ============================================================
+# rules.txt — Plain English Business Rules
+# ============================================================
+# HOW TO USE:
+#   1. Write each rule inside a [R<number>] block.
+#   2. Write in plain English — no code needed.
+#   3. After saving, run:  python compiler.py
+#   4. The compiler will update rulebook.json automatically.
+# ============================================================
+
+[R1]
+The enrollment fee must be exactly Rs.1500 more than the catalog fee.
+The enrollment fee must be divisible by 500 with no remainder.
+The ratio of enrollment fee to catalog fee must be greater than 1.0 and at most 1.5.
+The student's attendance percentage must be at least 75 and at most 100.
+The value of attendance percentage multiplied by enrollment fee divided by 100 must be greater than or equal to the catalog fee minus 200.
+Severity is HIGH.
+
+[R2]
+If the course name contains the word 'Basics' or 'Intro', the student qualifies for the exam if their attendance percentage is 75 or higher, even if the exam fee is not cleared.
+For all other courses, the student must have cleared the exam fee (fee_cleared = Y) and must also be marked as eligible (is_eligible = Y).
+Severity is HIGH.
