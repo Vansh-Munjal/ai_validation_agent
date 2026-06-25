@@ -118,6 +118,9 @@ def setup_catalog_schema():
         ("C002", "Data Science Advanced",  8000),
         ("C003", "Machine Learning Intro", 12000),
     ]
+    # Clear existing rows to allow re-seeding modified values
+    cursor.execute("DELETE FROM course_catalog")
+
     for row in rows:
         try:
             cursor.execute(
@@ -176,6 +179,9 @@ def setup_enroll_schema():
         (2, "C002", "Bob",     8000),   # ← 8000 == catalog's 8000 → diff=0, FAIL R1
         (3, "C003", "Charlie", 12000),  # ← 12000 == catalog's 12000 → diff=0, FAIL R1
     ]
+    # Clear existing rows to allow re-seeding modified values
+    cursor.execute("DELETE FROM enrollment")
+
     for row in rows:
         try:
             cursor.execute(
@@ -234,6 +240,9 @@ def setup_exam_schema():
         (2, "C002", "Y", 80, "Y"),   # all good
         (3, "C003", "N", 60, "N"),   # not eligible — attendance too low
     ]
+    # Clear existing rows to allow re-seeding modified values
+    cursor.execute("DELETE FROM exam_eligibility")
+
     for row in rows:
         try:
             cursor.execute(

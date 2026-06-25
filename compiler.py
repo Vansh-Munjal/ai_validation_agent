@@ -44,6 +44,35 @@ The validation engine has access to THREE Oracle database tables:
                     min_attendance_pct (number: the student's actual attendance %),
                     fee_cleared (text: 'Y'/'N')
 
+IMPORTANT — Auto-correct field names:
+  The user is non-technical and may use informal terms or make spelling mistakes.
+  You must automatically map any informal or misspelled term to the correct field name below.
+  Never use the informal term in the output — always use the exact field name.
+
+  Common informal terms and their correct field names:
+  ┌─────────────────────────────────────────────────────────────┐
+  │ Informal / Misspelled Term        → Correct Field Name      │
+  ├─────────────────────────────────────────────────────────────┤
+  │ fee cleared, is_cleared,          → exam.fee_cleared        │
+  │   cleared, fee_paid, paid fees,   →                         │
+  │   exam fee cleared                →                         │
+  │ eligible, eligibility,            → exam.is_eligible        │
+  │   is_eligible, eligable           →                         │
+  │ attendance, attendence, attend,   → exam.min_attendance_pct │
+  │   attendance_pct, attendance%,    →                         │
+  │   attendance percentage           →                         │
+  │ enrollment fee, enroll fee,       → enrollment.fee          │
+  │   student fee, paid fee           →                         │
+  │ catalog fee, course fee,          → catalog.fee             │
+  │   listed fee, original fee        →                         │
+  │ course name, subject name,        → catalog.course_name     │
+  │   coursename, cource name         →                         │
+  │ student name, studnet name        → enrollment.student_name │
+  └─────────────────────────────────────────────────────────────┘
+
+  If you see a term not in this list, use your best judgement to map it
+  to the closest matching field from the three tables above.
+
 Your job: given a plain English rule, output ONLY a valid JSON object with these exact fields:
 
 {
@@ -62,12 +91,19 @@ Rules for choosing type:
   - "english"    : the rule requires qualitative reasoning or checking the text
                    content of a field (e.g. checking if a course name contains a word)
 
-For "arithmetic" — condition must be a single Python expression string using
-  catalog.field, enrollment.field, exam.field  dot-notation.
-  Example: "(enrollment.fee - catalog.fee) == 1500 and enrollment.fee % 500 == 0"
+For "arithmetic" — follow these EXACT steps:
+  STEP 1: Read every sentence in the rule text carefully.
+  STEP 2: Identify EACH individual condition or constraint — every sentence is usually one condition.
+  STEP 3: Convert EACH one to a Python sub-expression using catalog.field, enrollment.field, exam.field dot-notation.
+  STEP 4: Join ALL sub-expressions with `and` into one final Python expression.
+  STEP 5: Double-check — count the sentences in the input, count the sub-expressions in your output. They must match.
+  CRITICAL: Do NOT stop after 1 or 2 conditions. Include EVERY condition mentioned in the rule.
+  Example for a rule with 3 conditions:
+    "(enrollment.fee - catalog.fee) == 1500 and enrollment.fee % 500 == 0 and 75 <= exam.min_attendance_pct <= 100"
 
 For "english" — condition must be a plain English instruction (starting with "Check...")
   that the LLM will read and evaluate against the actual data.
+  CRITICAL: Include ALL conditions from the rule in the instruction. Do not omit any.
   Example: "Check whether the student has paid the exam fee and is marked as eligible."
 
 Output ONLY the raw JSON object. No markdown, no code fences, no extra explanation."""
@@ -82,7 +118,7 @@ def _get_llm() -> ChatGroq:
             "Get a free key at: https://console.groq.com/keys"
         )
     return ChatGroq(
-        model="llama-3.1-8b-instant",
+        model="llama-3.3-70b-versatile",
         api_key=GROQ_API_KEY,
         temperature=0,
         max_retries=2,
@@ -104,7 +140,7 @@ def parse_rules_txt(path: str) -> list[dict]:
         content = f.read()
 
     # Split on [R<n>] markers
-    parts = re.split(r"\[R(\d+)\]", content)
+    parts = re.split(r"\[R(\d+)\]\s*", content)
     # parts = ['preamble', '1', 'text1', '2', 'text2', ...]
 
     rules = []

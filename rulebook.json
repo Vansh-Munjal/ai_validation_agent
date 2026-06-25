@@ -3,20 +3,62 @@
     {
       "rule_id": "R1",
       "type": "arithmetic",
-      "description": "Complex fee validation: enrollment must be exactly Rs.1500 above catalog fee, pass modulo/divisibility checks, stay within 1.0–1.5× ratio, and meet minimum 75% attendance threshold",
-      "condition": "(enrollment.fee - catalog.fee) == 1500 and (enrollment.fee + catalog.fee) // 2 == catalog.fee + 750 and (enrollment.fee - catalog.fee) * 2 // 3 == 1000 and enrollment.fee % 500 == 0 and catalog.fee ** 0 == 1 and (exam.min_attendance_pct * enrollment.fee) / 100 >= catalog.fee - 200 and enrollment.fee / catalog.fee > 1 and enrollment.fee / catalog.fee <= 1.5 and enrollment.fee - catalog.fee != 0 and 75 <= exam.min_attendance_pct <= 100",
+      "description": "The enrollment fee must meet specific conditions relative to the catalog fee and attendance percentage.",
+      "condition": "(enrollment.fee - catalog.fee) == 1700 and enrollment.fee % 250 == 0 and 1.0 < (enrollment.fee / catalog.fee) <= 1.5 and 75 <= exam.min_attendance_pct <= 100 and (exam.min_attendance_pct * enrollment.fee / 100) >= (catalog.fee - 200)",
       "severity": "HIGH",
-      "on_failure": "Fix enrollment fee, attendance, or fee ratio — all arithmetic sub-checks must pass",
-      "data_sources": ["catalog", "enrollment", "exam"]
+      "on_failure": "Adjust the enrollment fee to meet the specified conditions.",
+      "data_sources": [
+        "catalog",
+        "enrollment",
+        "exam"
+      ]
     },
     {
       "rule_id": "R2",
       "type": "english",
-      "description": "Exam eligibility conditional waiver: If the course name contains 'Basics' or 'Intro', the student is eligible if they have at least 75% attendance (even if fee is not cleared). For all other courses, the student must have both cleared the exam fee (fee_cleared='Y') and be marked eligible (is_eligible='Y').",
-      "condition": "Check if the course name contains 'Basics' or 'Intro'. If yes, verify attendance is 75% or higher. If no, verify that the student has paid the exam fee and is eligible.",
+      "description": "Students qualify for the exam based on course name and attendance or fee clearance and eligibility",
+      "condition": "Check whether the course name contains 'Basics' or 'Intro' and the student's attendance percentage is 75 or higher, or if the course name does not contain 'Basics' or 'Intro' then the student must have cleared the exam fee and be marked as eligible",
       "severity": "HIGH",
-      "on_failure": "Ensure attendance is >= 75% for introductory courses, or clear fees and mark eligible for advanced courses",
-      "data_sources": ["catalog", "exam"]
+      "on_failure": "The student does not qualify for the exam due to insufficient attendance or uncleared exam fee or ineligibility",
+      "data_sources": [
+        "catalog",
+        "enrollment",
+        "exam"
+      ]
+    },
+    {
+      "rule_id": "R3",
+      "type": "arithmetic",
+      "description": "Student must be marked as eligible if they have cleared the exam fee",
+      "condition": "exam.fee_cleared == 'Y' and exam.is_eligible == 'Y' or exam.fee_cleared == 'N'",
+      "severity": "MEDIUM",
+      "on_failure": "Update the student's eligibility status to eligible",
+      "data_sources": [
+        "exam"
+      ]
+    },
+    {
+      "rule_id": "R4",
+      "type": "arithmetic",
+      "description": "Each course must have exactly one student enrolled",
+      "condition": "len([e for e in enrollment if e.course_id == catalog.course_id]) == 1",
+      "severity": "MEDIUM",
+      "on_failure": "Review the enrollment records for the course to ensure only one student is enrolled",
+      "data_sources": [
+        "catalog",
+        "enrollment"
+      ]
+    },
+    {
+      "rule_id": "R5",
+      "type": "arithmetic",
+      "description": "The student must have paid their exam fees, be attending at least 70 percent of classes, and be marked as eligible.",
+      "condition": "exam.fee_cleared == 'Y' and exam.min_attendance_pct >= 70 and exam.is_eligible == 'Y'",
+      "severity": "MEDIUM",
+      "on_failure": "The student needs to pay their exam fees, attend more classes, or be marked as eligible.",
+      "data_sources": [
+        "exam"
+      ]
     }
   ]
 }
