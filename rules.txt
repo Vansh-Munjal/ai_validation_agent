@@ -20,27 +20,6 @@ If the course name contains the word 'Basics' or 'Intro', the student qualifies 
 For all other courses, the student must have cleared the exam fee (fee_cleared = Y) and must also be marked as eligible (is_eligible = Y).
 Severity is HIGH.
 
-[R3]
-If the student has cleared the exam fee (fee_cleared = Y), they must also be marked as eligible (is_eligible = Y).
-A student cannot have their fee cleared but still be marked as not eligible.
-Severity is MEDIUM.
+[R3] 
+Each course must have exactly two student enrolled.
 
-[R4] 
-Each course must have exactly one student enrolled.
-The enrollment count for the course must equal 1.
-
-[R5]
-The student must have paid their exam fees.
-The student must be attending at least 70 percent of classes.
-The student should be marked as eligible.
-Severity is MEDIUM.
-
-[R6]
-Each course must have exactly one distinct student name enrolled.
-Use a database count to verify this — not a row comparison.
-Severity is MEDIUM.
-
-[R7]
-The average catalog fee across all courses in the database must be less than Rs.10000.
-This is a global check across the entire catalog table, not just one course.
-Severity is LOW.

@@ -175,9 +175,24 @@ def setup_enroll_schema():
             raise
 
     rows = [
-        (1, "C001", "Alice",   6500),   # ← 6500 - 5000 = 1500 → PASS R1 (any_course)
-        (2, "C002", "Bob",     8000),   # ← 8000 == catalog's 8000 → diff=0, FAIL R1
-        (3, "C003", "Charlie", 12000),  # ← 12000 == catalog's 12000 → diff=0, FAIL R1
+        # ── C001: Python Basics (catalog.fee = 5000) ──────────────────────────
+        # Fee diff 1700 = PASS R1  |  Fee diff ≠ 1700 = FAIL R1
+        (1,  "C001", "Alice",   6700),   # 6700 - 5000 = 1700 → PASS R1
+        (2,  "C001", "Bob",     6500),   # 6500 - 5000 = 1500 → FAIL R1
+        (3,  "C001", "Charlie", 6700),   # 6700 - 5000 = 1700 → PASS R1
+        (4,  "C001", "Diana",   6000),   # 6000 - 5000 = 1000 → FAIL R1
+
+        # ── C002: Data Science Advanced (catalog.fee = 8000) ──────────────────
+        (5,  "C002", "Eve",     9700),   # 9700 - 8000 = 1700 → PASS R1
+        (6,  "C002", "Frank",   8000),   # 8000 - 8000 = 0    → FAIL R1
+        (7,  "C002", "Grace",   9700),   # 9700 - 8000 = 1700 → PASS R1
+        (8,  "C002", "Henry",   9500),   # 9500 - 8000 = 1500 → FAIL R1
+
+        # ── C003: Machine Learning Intro (catalog.fee = 12000) ────────────────
+        (9,  "C003", "Ivy",     13700),  # 13700 - 12000 = 1700 → PASS R1
+        (10, "C003", "Jack",    13700),  # 13700 - 12000 = 1700 → PASS R1
+        (11, "C003", "Kate",    12000),  # 12000 - 12000 = 0    → FAIL R1
+        (12, "C003", "Leo",     13500),  # 13500 - 12000 = 1500 → FAIL R1
     ]
     # Clear existing rows to allow re-seeding modified values
     cursor.execute("DELETE FROM enrollment")
@@ -198,9 +213,11 @@ def setup_enroll_schema():
     conn.commit()
     conn.close()
     print("  ✓ Sample data inserted into ENROLL_USER.ENROLLMENT")
-    print("    1 | C001 | Alice   | fee = 6500  ← diff=1500 vs catalog (5000) → PASS R1")
-    print("    2 | C002 | Bob     | fee = 8000")
-    print("    3 | C003 | Charlie | fee = 12000\n")
+    print("    C001 | Alice, Bob, Charlie, Diana   (4 students)")
+    print("    C002 | Eve, Frank, Grace, Henry     (4 students)")
+    print("    C003 | Ivy, Jack, Kate, Leo         (4 students)")
+    print("    Total: 12 enrollment rows\n")
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
