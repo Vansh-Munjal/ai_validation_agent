@@ -34,3 +34,13 @@ The student must have paid their exam fees.
 The student must be attending at least 70 percent of classes.
 The student should be marked as eligible.
 Severity is MEDIUM.
+
+[R6]
+Each course must have exactly one distinct student name enrolled.
+Use a database count to verify this — not a row comparison.
+Severity is MEDIUM.
+
+[R7]
+The average catalog fee across all courses in the database must be less than Rs.10000.
+This is a global check across the entire catalog table, not just one course.
+Severity is LOW.

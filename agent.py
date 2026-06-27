@@ -19,7 +19,7 @@ import time
 from langchain_groq import ChatGroq
 from langsmith import traceable
 from config import GROQ_API_KEY
-from db import get_course_catalog, get_enrollment, get_exam_eligibility, get_all_course_ids
+from db import get_course_catalog, get_enrollment, get_exam_eligibility, get_all_course_ids, execute_sql_rule
 from tools import python_eval, compute_rule_comparison
 
 
@@ -135,6 +135,34 @@ def _evaluate_english_rule(
         return "ERROR", f"LLM evaluation failed: {str(e)[:120]}"
 
 
+@traceable(name="evaluate_sql")
+def _evaluate_sql_rule(
+    course_id: str, rule: dict, llm,
+    catalog: dict, enrollment: dict, exam: dict
+) -> tuple[str, str]:
+    """
+    Execute a SQL-type rule against Oracle (via admin connection) and return
+    (status, reason).  The SQL query must return exactly one row, one column:
+        1  →  PASS
+        0  →  FAIL
+    Supports all Oracle SQL: COUNT, DISTINCT, GROUP BY, HAVING,
+    window functions (RANK, ROW_NUMBER, DENSE_RANK, LEAD, LAG),
+    and cross-schema JOINs.
+    """
+    try:
+        result = execute_sql_rule(rule["condition"], course_id=course_id)
+        passed       = result["passed"]
+        result_value = result["result_value"]
+        status       = "PASS" if passed else "FAIL"
+
+        # Use the LLM to produce a human-readable one-liner
+        reason = _summarize(llm, rule, status, catalog, enrollment, exam)
+        return status, reason
+
+    except Exception as e:
+        return "ERROR", f"SQL execution error — {e}"
+
+
 # ─── Evaluate one rule ────────────────────────────────────────────────────────
 
 @traceable(name="evaluate_rule", tags=["validation"])
@@ -206,9 +234,11 @@ def evaluate_single_rule(course_id: str, rule: dict, llm) -> dict:
             "sources":     rule.get("data_sources", []),
         }
 
-    # ── standard single-course evaluation ─────────────────────────────────────
+    # ── standard single-course evaluation ──────────────────────────────────────────────
     if rule_type == "english":
         status, reason = _evaluate_english_rule(llm, rule, catalog, enrollment, exam)
+    elif rule_type == "sql":
+        status, reason = _evaluate_sql_rule(course_id, rule, llm, catalog, enrollment, exam)
     else:
         try:
             passed = python_eval(rule["condition"], catalog, enrollment, exam)

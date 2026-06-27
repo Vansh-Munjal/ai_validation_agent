@@ -85,11 +85,18 @@ Your job: given a plain English rule, output ONLY a valid JSON object with these
 }
 
 Rules for choosing type:
-  - "arithmetic" : the rule can be fully expressed as a Python boolean expression
-                   using only numbers, math operators (+, -, *, /, //, %, **),
-                   and comparisons (==, !=, <, >, <=, >=, and, or, not, in)
-  - "english"    : the rule requires qualitative reasoning or checking the text
-                   content of a field (e.g. checking if a course name contains a word)
+  - "arithmetic" : the rule compares single-row values using Python math
+                   (==, !=, <, >, <=, >=, %, //, **, and, or, not)
+  - "english"    : the rule checks text content or needs qualitative reasoning
+                   (e.g. course name contains a word, conditional logic on strings)
+  - "sql"        : the rule needs ANY of the following — use "sql" immediately:
+                   • COUNT, SUM, AVG, MAX, MIN aggregates
+                   • DISTINCT / COUNT DISTINCT
+                   • GROUP BY, HAVING
+                   • Window functions: RANK(), ROW_NUMBER(), DENSE_RANK(), LEAD(), LAG(), NTILE()
+                   • Comparing values ACROSS rows (not just within one row)
+                   • Checking how many rows exist in a table
+                   • Cross-table JOINs
 
 For "arithmetic" — follow these EXACT steps:
   STEP 1: Read every sentence in the rule text carefully.
@@ -105,6 +112,43 @@ For "english" — condition must be a plain English instruction (starting with "
   that the LLM will read and evaluate against the actual data.
   CRITICAL: Include ALL conditions from the rule in the instruction. Do not omit any.
   Example: "Check whether the student has paid the exam fee and is marked as eligible."
+
+For "sql" — condition must be a valid Oracle SQL SELECT statement.
+  FULL TABLE NAMES TO USE (always use these exact schema-qualified names):
+    CATALOG_USER.COURSE_CATALOG      → columns: course_id, course_name, fee
+    ENROLL_USER.ENROLLMENT           → columns: enrollment_id, course_id, student_name, fee
+    EXAM_USER.EXAM_ELIGIBILITY       → columns: eligibility_id, course_id, is_eligible,
+                                                  min_attendance_pct, fee_cleared
+
+  SQL CONTRACT (mandatory):
+    The query MUST return exactly ONE row with ONE numeric column.
+    Value 1 → rule PASSES.   Value 0 → rule FAILS.
+    Wrap your logic in: SELECT CASE WHEN <your_condition> THEN 1 ELSE 0 END FROM ...
+
+  Use :course_id as a bind variable when filtering by the current course (optional).
+
+  SQL Examples:
+    • Count distinct students in a course must equal 1:
+      SELECT CASE WHEN COUNT(DISTINCT student_name) = 1 THEN 1 ELSE 0 END
+      FROM ENROLL_USER.ENROLLMENT WHERE course_id = :course_id
+
+    • Average catalog fee across ALL courses must be below 10000:
+      SELECT CASE WHEN AVG(fee) < 10000 THEN 1 ELSE 0 END
+      FROM CATALOG_USER.COURSE_CATALOG
+
+    • No two courses can have the same enrollment fee (distinct fees = total rows):
+      SELECT CASE WHEN COUNT(DISTINCT fee) = COUNT(*) THEN 1 ELSE 0 END
+      FROM ENROLL_USER.ENROLLMENT
+
+    • Rank students by attendance; top-ranked must have >= 80%:
+      SELECT CASE WHEN MAX(min_attendance_pct) >= 80 THEN 1 ELSE 0 END
+      FROM EXAM_USER.EXAM_ELIGIBILITY WHERE course_id = :course_id
+
+    • Cross-schema join — enrollment fee must exceed catalog fee for all courses:
+      SELECT CASE WHEN COUNT(*) = 0 THEN 1 ELSE 0 END
+      FROM ENROLL_USER.ENROLLMENT e
+      JOIN CATALOG_USER.COURSE_CATALOG c ON e.course_id = c.course_id
+      WHERE e.fee <= c.fee AND e.course_id = :course_id
 
 Output ONLY the raw JSON object. No markdown, no code fences, no extra explanation."""
 

@@ -3,10 +3,10 @@
     {
       "rule_id": "R1",
       "type": "arithmetic",
-      "description": "The enrollment fee must meet specific conditions relative to the catalog fee and attendance percentage.",
+      "description": "The enrollment fee must meet specific conditions relative to the catalog fee and attendance percentage",
       "condition": "(enrollment.fee - catalog.fee) == 1700 and enrollment.fee % 250 == 0 and 1.0 < (enrollment.fee / catalog.fee) <= 1.5 and 75 <= exam.min_attendance_pct <= 100 and (exam.min_attendance_pct * enrollment.fee / 100) >= (catalog.fee - 200)",
       "severity": "HIGH",
-      "on_failure": "Adjust the enrollment fee to meet the specified conditions.",
+      "on_failure": "Adjust the enrollment fee to meet the specified conditions",
       "data_sources": [
         "catalog",
         "enrollment",
@@ -16,10 +16,10 @@
     {
       "rule_id": "R2",
       "type": "english",
-      "description": "Students qualify for the exam based on course name and attendance or fee clearance and eligibility",
-      "condition": "Check whether the course name contains 'Basics' or 'Intro' and the student's attendance percentage is 75 or higher, or if the course name does not contain 'Basics' or 'Intro' then the student must have cleared the exam fee and be marked as eligible",
+      "description": "Student qualifies for the exam based on course name and attendance or fee clearance and eligibility",
+      "condition": "Check whether the course name contains 'Basics' or 'Intro' and the student's attendance percentage is 75 or higher, or if the course name does not contain 'Basics' or 'Intro', the student has cleared the exam fee and is marked as eligible",
       "severity": "HIGH",
-      "on_failure": "The student does not qualify for the exam due to insufficient attendance or uncleared exam fee or ineligibility",
+      "on_failure": "The student does not qualify for the exam due to insufficient attendance or uncleared exam fee",
       "data_sources": [
         "catalog",
         "enrollment",
@@ -29,8 +29,8 @@
     {
       "rule_id": "R3",
       "type": "arithmetic",
-      "description": "Student must be marked as eligible if they have cleared the exam fee",
-      "condition": "exam.fee_cleared == 'Y' and exam.is_eligible == 'Y' or exam.fee_cleared == 'N'",
+      "description": "Student must be marked as eligible if their exam fee is cleared",
+      "condition": "exam.fee_cleared == 'Y' and exam.is_eligible == 'Y' or exam.fee_cleared != 'Y'",
       "severity": "MEDIUM",
       "on_failure": "Update the student's eligibility status to eligible",
       "data_sources": [
@@ -39,13 +39,12 @@
     },
     {
       "rule_id": "R4",
-      "type": "arithmetic",
+      "type": "sql",
       "description": "Each course must have exactly one student enrolled",
-      "condition": "len([e for e in enrollment if e.course_id == catalog.course_id]) == 1",
-      "severity": "MEDIUM",
-      "on_failure": "Review the enrollment records for the course to ensure only one student is enrolled",
+      "condition": "SELECT CASE WHEN COUNT(DISTINCT student_name) = 1 THEN 1 ELSE 0 END FROM ENROLL_USER.ENROLLMENT WHERE course_id = :course_id",
+      "severity": "HIGH",
+      "on_failure": "Enroll exactly one student in the course",
       "data_sources": [
-        "catalog",
         "enrollment"
       ]
     },
@@ -58,6 +57,28 @@
       "on_failure": "The student needs to pay their exam fees, attend more classes, or be marked as eligible.",
       "data_sources": [
         "exam"
+      ]
+    },
+    {
+      "rule_id": "R6",
+      "type": "sql",
+      "description": "Each course must have exactly one distinct student name enrolled",
+      "condition": "SELECT CASE WHEN COUNT(DISTINCT student_name) = 1 THEN 1 ELSE 0 END FROM ENROLL_USER.ENROLLMENT WHERE course_id = :course_id",
+      "severity": "MEDIUM",
+      "on_failure": "Update the enrollment records to ensure each course has only one distinct student name",
+      "data_sources": [
+        "enrollment"
+      ]
+    },
+    {
+      "rule_id": "R7",
+      "type": "sql",
+      "description": "The average catalog fee across all courses must be less than Rs.10000",
+      "condition": "SELECT CASE WHEN AVG(fee) < 10000 THEN 1 ELSE 0 END FROM CATALOG_USER.COURSE_CATALOG",
+      "severity": "LOW",
+      "on_failure": "The average catalog fee is too high and needs to be adjusted",
+      "data_sources": [
+        "catalog"
       ]
     }
   ]

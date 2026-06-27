@@ -18,6 +18,7 @@ is UNCHANGED — only this file knows about the multi-schema setup.
 
 import oracledb
 from config import (
+    DB_USER, DB_PASSWORD, DB_DSN,              # SYSTEM / admin (for SQL rules)
     CATALOG_DB_USER, CATALOG_DB_PASSWORD, CATALOG_DB_DSN,
     ENROLL_DB_USER,  ENROLL_DB_PASSWORD,  ENROLL_DB_DSN,
     EXAM_DB_USER,    EXAM_DB_PASSWORD,    EXAM_DB_DSN,
@@ -179,5 +180,91 @@ def get_exam_eligibility(course_id):
                 "fee_cleared":       row[4]
             }
         return None
+    finally:
+        conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Admin connection — for SQL-type rules requiring cross-schema access
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_admin_connection():
+    """
+    Open a connection to Oracle as SYSTEM (admin).
+
+    Used exclusively by SQL-type validation rules that need:
+      - Aggregate functions: COUNT, SUM, AVG, MAX, MIN
+      - DISTINCT selections across the full table
+      - GROUP BY / HAVING
+      - Window functions: RANK(), ROW_NUMBER(), DENSE_RANK(), LEAD(), LAG()
+      - Cross-schema joins (CATALOG_USER.COURSE_CATALOG JOIN ENROLL_USER.ENROLLMENT)
+
+    Full schema-qualified table names:
+      CATALOG_USER.COURSE_CATALOG      → course_id, course_name, fee
+      ENROLL_USER.ENROLLMENT           → enrollment_id, course_id, student_name, fee
+      EXAM_USER.EXAM_ELIGIBILITY       → eligibility_id, course_id, is_eligible,
+                                         min_attendance_pct, fee_cleared
+    """
+    return oracledb.connect(
+        user=DB_USER,
+        password=DB_PASSWORD,
+        dsn=DB_DSN
+    )
+
+
+def execute_sql_rule(sql: str, course_id: str = None) -> dict:
+    """
+    Execute a SQL validation rule against Oracle using the admin connection.
+
+    Supports ALL Oracle SQL features:
+      - Aggregates  : COUNT, SUM, AVG, MAX, MIN, COUNT(DISTINCT ...)
+      - Set ops     : DISTINCT, UNION, INTERSECT, MINUS
+      - Grouping    : GROUP BY, HAVING
+      - Window fns  : RANK() OVER (...), ROW_NUMBER() OVER (...),
+                      DENSE_RANK(), LEAD(), LAG(), NTILE()
+      - Cross-schema: JOIN across CATALOG_USER, ENROLL_USER, EXAM_USER
+
+    SQL CONTRACT — the query MUST return exactly one row with one numeric column:
+        1  →  rule PASSES
+        0  →  rule FAILS
+
+    Use :course_id as a bind variable when filtering by the current course (optional).
+
+    Example (count distinct students per course must equal 1):
+        SELECT CASE WHEN COUNT(DISTINCT student_name) = 1 THEN 1 ELSE 0 END
+        FROM ENROLL_USER.ENROLLMENT
+        WHERE course_id = :course_id
+
+    Returns:
+        {
+          "passed":       bool,
+          "result_value": int | None,  # raw value returned by SQL
+          "sql":          str          # the executed SQL (for debugging)
+        }
+    """
+    conn = get_admin_connection()
+    try:
+        cursor = conn.cursor()
+        params = {}
+        if course_id and ":course_id" in sql:
+            params["course_id"] = course_id
+
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+
+        if not rows:
+            # No rows returned → treat as PASS (no violations found)
+            return {"passed": True, "result_value": None, "sql": sql}
+
+        result_value = rows[0][0]
+
+        # 1 → PASS, anything else (0, None, negative) → FAIL
+        try:
+            passed = int(result_value) == 1
+        except (TypeError, ValueError):
+            passed = False
+
+        return {"passed": passed, "result_value": result_value, "sql": sql}
+
     finally:
         conn.close()
