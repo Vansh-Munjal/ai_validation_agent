@@ -292,7 +292,7 @@ def parse_natural_query(query_text: str, llm) -> dict:
     Returns:
         {
           "course_ids":   ["C003"],   # course IDs to validate
-          "rule_ids":     "all",      # "all" or list like ["R1", "R2"]
+          "rule_ids":     ["R1"],     # "all" or list like ["R1", "R2"]
           "student_name": "Leo",      # "all", or a specific name like "Charlie"
           "roll_no":      "2024ML004" # None, or the exact roll_no if mentioned
         }
@@ -302,30 +302,54 @@ def parse_natural_query(query_text: str, llm) -> dict:
 
     all_ids = get_all_course_ids()
     all_roll_nos = get_all_roll_nos()   # e.g. ["2024CS001", ..., "2024ML004"]
+    detected_roll_no = None
 
-    # ── Fast-path: detect roll_no in query before calling the LLM ─────────────
     # Pattern: 4-digit year + 2-letter dept code + 3-digit seq (e.g. 2024ML004)
     roll_pattern = re.compile(r'\b(\d{4}[A-Za-z]{2}\d{3})\b')
     roll_match   = roll_pattern.search(query_text)
-    detected_roll_no = None
 
     if roll_match:
         candidate = roll_match.group(1).upper()
-        # Normalise to match stored case (stored as-is, e.g. "2024ML004")
         matched_roll = next(
             (r for r in all_roll_nos if r.upper() == candidate), None
         )
         if matched_roll:
             detected_roll_no = matched_roll
-            # Look up the student so we can resolve course_ids too
-            enroll = get_enrollment_by_roll_no(matched_roll)
-            if enroll:
-                return {
-                    "course_ids":   [enroll["course_id"]],
-                    "rule_ids":     "all",
-                    "student_name": enroll["student_name"],
-                    "roll_no":      matched_roll,
-                }
+
+    # ── Fast-path: detect rule IDs in query before calling the LLM ────────────
+    # Matches: "rule 1", "R1", "rule R1", "rules 1 and 2", "R1,R2", etc.
+    rulebook_path = os.path.join(os.path.dirname(__file__), "rulebook.json")
+    with open(rulebook_path) as f:
+        all_rules_data = json.load(f)["rules"]
+    rule_ids_available = [r["rule_id"] for r in all_rules_data]
+
+    # Build a pattern that matches "R1", "R 1", "rule 1", "rule R1", etc.
+    # It captures the numeric part and we map it to R<N>
+    rule_pattern = re.compile(
+        r'\b(?:rules?\s*)?[Rr]\s*(\d+)\b'      # "R1", "R 1", "rule R1"
+        r'|\b(?:rules?\s+)(\d+)\b',             # "rule 1", "rules 2"
+        re.IGNORECASE
+    )
+    rule_matches = rule_pattern.findall(query_text)
+    detected_rule_ids = None
+    if rule_matches:
+        nums = [m[0] or m[1] for m in rule_matches if (m[0] or m[1])]
+        candidates = [f"R{n}" for n in nums]
+        # Keep only valid rule IDs that exist in the rulebook
+        valid_detected = [c for c in candidates if c in rule_ids_available]
+        if valid_detected:
+            detected_rule_ids = valid_detected
+
+    # ── If roll_no was found, return immediately (no LLM needed) ─────────────
+    if detected_roll_no:
+        enroll = get_enrollment_by_roll_no(detected_roll_no)
+        if enroll:
+            return {
+                "course_ids":   [enroll["course_id"]],
+                "rule_ids":     detected_rule_ids if detected_rule_ids else "all",
+                "student_name": enroll["student_name"],
+                "roll_no":      detected_roll_no,
+            }
     # ──────────────────────────────────────────────────────────────────────────
 
     courses_context = []
@@ -336,11 +360,6 @@ def parse_natural_query(query_text: str, llm) -> dict:
             courses_context.append(f"{cid}: {c['course_name']} (fee={c['fee']})")
         for e in get_all_enrollments_for_course(cid):
             all_students.add(e["student_name"])
-
-    rulebook_path = os.path.join(os.path.dirname(__file__), "rulebook.json")
-    with open(rulebook_path) as f:
-        all_rules = json.load(f)["rules"]
-    rule_ids_available = [r["rule_id"] for r in all_rules]
 
     prompt = f"""You are a university validation system assistant.
 
@@ -356,7 +375,7 @@ User query: "{query_text}"
 
 Extract:
 - course_ids: which courses to validate. Use ALL course IDs if user says "all", "every", or doesn't specify a course.
-- rule_ids: "all" unless user asks for specific rules (e.g. "only R1").
+- rule_ids: "all" unless the user mentions specific rules. The user may write "rule 1", "R1", "rule R1" — all mean the same R1. Return a list like ["R1"] for specific rules, or "all" for all.
 - student_name: the exact student name if mentioned, otherwise "all".
 - roll_no: the roll number if mentioned (e.g. "2024ML004"), otherwise null.
 
@@ -378,6 +397,24 @@ Response:
   "course_ids": ["C001", "C002", "C003"],
   "rule_ids": "all",
   "student_name": "Charlie",
+  "roll_no": null
+}}
+
+Query: "check rule 1 for Charlie"
+Response:
+{{
+  "course_ids": ["C001", "C002", "C003"],
+  "rule_ids": ["R1"],
+  "student_name": "Charlie",
+  "roll_no": null
+}}
+
+Query: "run only R2 and R3 for Data Science"
+Response:
+{{
+  "course_ids": ["C002"],
+  "rule_ids": ["R2", "R3"],
+  "student_name": "all",
   "roll_no": null
 }}
 
@@ -427,9 +464,14 @@ Response:"""
         if roll_no and roll_no not in all_roll_nos:
             roll_no = None
 
+        # If regex detected specific rule IDs, they override the LLM output
+        # (the LLM may have missed "rule 1" → R1 even with examples)
+        llm_rule_ids = parsed.get("rule_ids", "all")
+        final_rule_ids = detected_rule_ids if detected_rule_ids else llm_rule_ids
+
         return {
             "course_ids":   course_ids,
-            "rule_ids":     parsed.get("rule_ids", "all"),
+            "rule_ids":     final_rule_ids,
             "student_name": student_name,
             "roll_no":      roll_no,
         }
