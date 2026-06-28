@@ -120,64 +120,164 @@ def get_course_catalog(course_id):
 
 def get_enrollment(course_id):
     """
-    Fetch enrollment record from ENROLL_USER.ENROLLMENT.
+    Fetch the FIRST enrollment record for a course from ENROLL_USER.ENROLLMENT.
 
-    Connects as ENROLL_USER — completely separate Oracle session
-    from the catalog query above. Simulates a different system.
+    Connects as ENROLL_USER — completely separate Oracle session.
+    Simulates a different system.
 
     Returns a dict like:
-        { "enrollment_id": 1, "course_id": "C001", "fee": 6000 }
+        { "enrollment_id": 1, "roll_no": "2024CS001", "course_id": "C001",
+          "student_name": "Alice", "fee": 6700 }
     Returns None if not found.
     """
     conn = get_enroll_connection()    # ← connects as ENROLL_USER
     try:
         cursor = conn.cursor()
         cursor.execute(
-            # No schema prefix needed — ENROLL_USER owns this table
-            "SELECT enrollment_id, course_id, student_name, fee FROM enrollment WHERE course_id = :cid",
+            "SELECT enrollment_id, roll_no, course_id, student_name, fee "
+            "FROM enrollment WHERE course_id = :cid ORDER BY enrollment_id",
             cid=course_id
         )
         row = cursor.fetchone()
         if row:
             return {
                 "enrollment_id": row[0],
-                "course_id":     row[1],
-                "student_name":  row[2],
-                "fee":           row[3]
+                "roll_no":       row[1],
+                "course_id":     row[2],
+                "student_name":  row[3],
+                "fee":           row[4]
             }
         return None
     finally:
         conn.close()
 
 
-def get_exam_eligibility(course_id):
+def get_all_enrollments_for_course(course_id: str) -> list:
     """
-    Fetch exam eligibility record from EXAM_USER.EXAM_ELIGIBILITY.
+    Fetch ALL enrolled students for a course from ENROLL_USER.ENROLLMENT.
 
-    Connects as EXAM_USER — third independent system.
-    Reserved for future validation rules (Phase 2+).
+    Unlike get_enrollment() which returns only the first row (fetchone),
+    this returns every student enrolled in the course.
+
+    Returns a list of dicts:
+        [
+          {"enrollment_id": 1, "roll_no": "2024CS001", "course_id": "C001",
+           "student_name": "Alice", "fee": 6700},
+          ...
+        ]
+    Returns [] if no rows found.
+    """
+    conn = get_enroll_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT enrollment_id, roll_no, course_id, student_name, fee "
+            "FROM enrollment WHERE course_id = :cid ORDER BY enrollment_id",
+            cid=course_id
+        )
+        return [
+            {
+                "enrollment_id": r[0],
+                "roll_no":       r[1],
+                "course_id":     r[2],
+                "student_name":  r[3],
+                "fee":           r[4]
+            }
+            for r in cursor.fetchall()
+        ]
+    finally:
+        conn.close()
+
+
+def get_enrollment_by_roll_no(roll_no: str) -> dict:
+    """
+    Fetch a single enrollment record by roll_no from ENROLL_USER.ENROLLMENT.
+
+    Used when the user queries by roll number (e.g. '2024ML004') so we can
+    pinpoint the exact student regardless of name ambiguity.
 
     Returns a dict like:
-        { "eligibility_id": 1, "course_id": "C001", "is_eligible": "Y",
-          "min_attendance_pct": 75, "fee_cleared": "N" }
+        { "enrollment_id": 12, "roll_no": "2024ML004", "course_id": "C003",
+          "student_name": "Leo", "fee": 13500 }
+    Returns None if not found.
+    """
+    conn = get_enroll_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT enrollment_id, roll_no, course_id, student_name, fee "
+            "FROM enrollment WHERE roll_no = :rno",
+            rno=roll_no
+        )
+        row = cursor.fetchone()
+        if row:
+            return {
+                "enrollment_id": row[0],
+                "roll_no":       row[1],
+                "course_id":     row[2],
+                "student_name":  row[3],
+                "fee":           row[4]
+            }
+        return None
+    finally:
+        conn.close()
+
+
+def get_all_roll_nos() -> list:
+    """
+    Fetch all roll numbers across all enrollments.
+    Used by parse_natural_query to recognise roll numbers in user queries.
+
+    Returns a list like ["2024CS001", "2024CS002", ..., "2024ML004"].
+    """
+    conn = get_enroll_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT roll_no FROM enrollment ORDER BY roll_no")
+        return [row[0] for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_exam_eligibility(course_id, roll_no=None):
+    """
+    Fetch exam eligibility from EXAM_USER.EXAM_ELIGIBILITY.
+
+    Now supports per-student lookup via roll_no (preferred), or falls back
+    to returning the first row for the course when roll_no is not provided.
+
+    Returns a dict like:
+        { "eligibility_id": 1, "roll_no": "2024CS001", "course_id": "C001",
+          "is_eligible": "Y", "min_attendance_pct": 80, "fee_cleared": "Y" }
     Returns None if not found.
     """
     conn = get_exam_connection()      # ← connects as EXAM_USER
     try:
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT eligibility_id, course_id, is_eligible, min_attendance_pct, fee_cleared "
-            "FROM exam_eligibility WHERE course_id = :cid",
-            cid=course_id
-        )
+        if roll_no:
+            cursor.execute(
+                "SELECT eligibility_id, roll_no, course_id, is_eligible, "
+                "min_attendance_pct, fee_cleared "
+                "FROM exam_eligibility WHERE roll_no = :rno",
+                rno=roll_no
+            )
+        else:
+            cursor.execute(
+                "SELECT eligibility_id, roll_no, course_id, is_eligible, "
+                "min_attendance_pct, fee_cleared "
+                "FROM exam_eligibility WHERE course_id = :cid "
+                "ORDER BY eligibility_id",
+                cid=course_id
+            )
         row = cursor.fetchone()
         if row:
             return {
                 "eligibility_id":    row[0],
-                "course_id":         row[1],
-                "is_eligible":       row[2],
-                "min_attendance_pct": row[3],
-                "fee_cleared":       row[4]
+                "roll_no":           row[1],
+                "course_id":         row[2],
+                "is_eligible":       row[3],
+                "min_attendance_pct": row[4],
+                "fee_cleared":       row[5]
             }
         return None
     finally:

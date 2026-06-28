@@ -29,10 +29,10 @@
     {
       "rule_id": "R3",
       "type": "sql",
-      "description": "Each course must have exactly two students enrolled.",
-      "condition": "SELECT CASE WHEN COUNT(DISTINCT student_name) = 2 THEN 1 ELSE 0 END FROM ENROLL_USER.ENROLLMENT WHERE course_id = :course_id",
+      "description": "Each course must have at least 4 students enrolled with distinct roll numbers.",
+      "condition": "SELECT CASE WHEN COUNT(DISTINCT roll_no) >= 4 THEN 1 ELSE 0 END FROM ENROLL_USER.ENROLLMENT WHERE course_id = :course_id",
       "severity": "HIGH",
-      "on_failure": "Enroll one more student or remove one student to meet the two-student requirement.",
+      "on_failure": "Enroll more students until at least 4 students with unique roll numbers are in this course.",
       "data_sources": [
         "enrollment"
       ]

@@ -582,28 +582,36 @@
     <div>
       <div class="sidebar-section-label">Quick Select</div>
       <div class="quick-btns">
-        <button class="quick-btn c001 {{ 'active' if course_id == 'C001' else '' }}"
-                onclick="setCourse('C001')">
+        <button class="quick-btn c001"
+                onclick="setQuery('validate Python Basics course')">
           <span class="quick-btn-dot"></span>
           <div>
             <div style="font-size:.8rem;font-weight:600;">C001</div>
             <div style="font-size:.65rem;color:var(--text3);">Python Basics</div>
           </div>
         </button>
-        <button class="quick-btn c002 {{ 'active' if course_id == 'C002' else '' }}"
-                onclick="setCourse('C002')">
+        <button class="quick-btn c002"
+                onclick="setQuery('validate Data Science Advanced')">
           <span class="quick-btn-dot"></span>
           <div>
             <div style="font-size:.8rem;font-weight:600;">C002</div>
             <div style="font-size:.65rem;color:var(--text3);">Data Science Adv.</div>
           </div>
         </button>
-        <button class="quick-btn c003 {{ 'active' if course_id == 'C003' else '' }}"
-                onclick="setCourse('C003')">
+        <button class="quick-btn c003"
+                onclick="setQuery('validate Machine Learning Intro')">
           <span class="quick-btn-dot"></span>
           <div>
             <div style="font-size:.8rem;font-weight:600;">C003</div>
             <div style="font-size:.65rem;color:var(--text3);">ML Intro</div>
+          </div>
+        </button>
+        <button class="quick-btn" style="border-color:var(--accent2);"
+                onclick="setQuery('validate all courses')">
+          <span class="quick-btn-dot" style="background:var(--accent2);"></span>
+          <div>
+            <div style="font-size:.8rem;font-weight:600;">All</div>
+            <div style="font-size:.65rem;color:var(--text3);">All Courses</div>
           </div>
         </button>
       </div>
@@ -635,23 +643,30 @@
     <!-- Input Row -->
     <form id="validateForm" method="POST" action="/" onsubmit="startLoading()">
       <div class="input-row">
-        <span class="input-label">Course ID</span>
+        <span class="input-label">Ask</span>
         <input
-          id="course_id_input"
+          id="query_input"
           type="text"
-          name="course_id"
-          placeholder="e.g. C001"
-          value="{{ course_id or '' }}"
+          name="query"
+          placeholder="e.g. validate Python Basics · check all courses · show C001 and C002"
+          value="{{ query or '' }}"
           autocomplete="off"
           required
-          style="max-width:220px;"
+          style="flex:1;min-width:280px;"
         />
         <button id="validateBtn" type="submit" class="btn-validate">
           <span class="spinner"></span>
           <span class="btn-text">▶ Validate</span>
         </button>
-        <span style="font-size:.78rem;color:var(--text3);">or use Quick Select →</span>
       </div>
+      {% if parsed %}
+      <div style="font-size:.75rem;color:var(--text3);margin-top:6px;padding-left:4px;">
+        🤖 Understood: courses
+        <strong style="color:var(--accent);">{{ parsed.course_ids | join(', ') }}</strong>
+        · rules
+        <strong style="color:var(--accent2);">{{ parsed.rule_ids }}</strong>
+      </div>
+      {% endif %}
     </form>
 
     <!-- Error -->
@@ -659,42 +674,43 @@
     <div class="error-box">⚠ {{ error }}</div>
     {% endif %}
 
-    <!-- Stats Row -->
-    {% if results %}
-    {% set fail_count = results | selectattr("status", "ne", "PASS") | list | count %}
-    {% set pass_count = results | selectattr("status", "equalto", "PASS") | list | count %}
-    <div class="stats-row">
-      <div class="stat-card">
-        <div class="stat-label">Course</div>
-        <div class="stat-value accent" style="font-family:'JetBrains Mono',monospace;font-size:1.3rem;">{{ course_id }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Total Rules</div>
-        <div class="stat-value accent">{{ results | length }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Passed</div>
-        <div class="stat-value pass">{{ pass_count }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Failed</div>
-        <div class="stat-value fail">{{ fail_count }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Health</div>
+    <!-- Results for ALL matched courses -->
+    {% for cr in all_results %}
+    {% set report      = cr.report %}
+    {% set catalog     = cr.catalog %}
+    {% set exam        = cr.exam %}
+    {% set cid         = cr.course_id %}
+    {% set per_student = cr.per_student %}
+    {% set sql_results = cr.sql_results %}
+
+    <!-- Count totals across all students + SQL -->
+    {% set all_flat = [] %}
+    {% for s in per_student %}{% for r in s.results %}{% if all_flat.append(r) %}{% endif %}{% endfor %}{% endfor %}
+    {% for r in sql_results %}{% if all_flat.append(r) %}{% endif %}{% endfor %}
+    {% set fail_count = all_flat | selectattr("status", "ne", "PASS") | list | count %}
+    {% set pass_count = all_flat | selectattr("status", "equalto", "PASS") | list | count %}
+
+    <!-- Course Header -->
+    <div style="margin-top:28px;margin-bottom:12px;display:flex;align-items:center;gap:12px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:1.1rem;font-weight:700;color:var(--accent);">{{ cid }}</div>
+      <div style="font-size:.95rem;color:var(--text2);font-weight:500;">{{ catalog.course_name if catalog else '' }}</div>
+      <div style="margin-left:auto;display:flex;gap:8px;">
+        <span style="background:var(--pass-bg);color:var(--pass);border:1px solid var(--pass-brd);border-radius:20px;padding:2px 12px;font-size:.8rem;font-weight:600;">✓ {{ pass_count }} passed</span>
+        {% if fail_count > 0 %}
+        <span style="background:var(--fail-bg);color:var(--fail);border:1px solid var(--fail-brd);border-radius:20px;padding:2px 12px;font-size:.8rem;font-weight:600;">✗ {{ fail_count }} failed</span>
+        {% endif %}
         {% if report %}
-        <div class="stat-value {{ report.overall_status | lower }}">{{ report.health_score }}%</div>
+        <span style="background:var(--surface2);color:var(--text2);border:1px solid var(--border);border-radius:20px;padding:2px 12px;font-size:.8rem;">{{ report.health_score }}% health</span>
         {% endif %}
       </div>
     </div>
 
-    <!-- Two-column results layout -->
+    <!-- Two-column layout -->
     <div class="results-grid">
 
-      <!-- LEFT: Schema data + Health score + Recommendations -->
+      <!-- LEFT: Health + Schema + Recommendations -->
       <div style="display:flex;flex-direction:column;gap:16px;">
 
-        <!-- Health Score -->
         {% if report %}
         {% set sc = report.overall_status | lower %}
         <div class="panel" style="animation: fadeUp .4s ease .2s both;">
@@ -703,13 +719,9 @@
             <div class="health-ring-wrap">
               <svg width="120" height="120" viewBox="0 0 120 120">
                 <circle class="health-ring-bg" cx="60" cy="60" r="50"/>
-                <circle
-                  class="health-ring-fg {{ sc }}"
-                  cx="60" cy="60" r="50"
+                <circle class="health-ring-fg {{ sc }}" cx="60" cy="60" r="50"
                   stroke-dasharray="314.16"
-                  stroke-dashoffset="{{ 314.16 * (1 - report.health_score / 100) | round(2) }}"
-                  id="healthRing"
-                />
+                  stroke-dashoffset="{{ 314.16 * (1 - report.health_score / 100) | round(2) }}"/>
               </svg>
               <div class="health-center">
                 <div class="health-pct {{ sc }}">{{ report.health_score | int }}%</div>
@@ -717,60 +729,47 @@
               </div>
             </div>
             <div class="health-status {{ sc }}">{{ report.overall_status }}</div>
-            <div class="health-meta">{{ report.passed_count }} of {{ report.total_rules }} rules passed</div>
+            <div class="health-meta">{{ report.passed_count }} of {{ report.total_rules }} rule checks passed</div>
           </div>
         </div>
         {% endif %}
 
-        <!-- Schema Data -->
-        {% if catalog and enrollment %}
+        {% if catalog %}
         <div class="panel" style="animation: fadeUp .4s ease .25s both;">
           <div class="panel-title">Oracle Data Snapshot</div>
-
-          <!-- CATALOG_USER -->
           <div class="schema-block">
             <div class="schema-name">📚 CATALOG_USER · COURSE_CATALOG</div>
             <div class="schema-row"><span class="schema-key">course_id</span><span class="schema-val">{{ catalog.course_id }}</span></div>
             <div class="schema-row"><span class="schema-key">course_name</span><span class="schema-val">{{ catalog.course_name }}</span></div>
             <div class="schema-row"><span class="schema-key">fee</span><span class="schema-val hi">₹ {{ catalog.fee }}</span></div>
           </div>
-
-          <!-- ENROLL_USER -->
-          <div class="schema-block">
-            <div class="schema-name">📋 ENROLL_USER · ENROLLMENT</div>
-            <div class="schema-row"><span class="schema-key">enrollment_id</span><span class="schema-val">{{ enrollment.enrollment_id }}</span></div>
-            <div class="schema-row"><span class="schema-key">student_name</span><span class="schema-val">{{ enrollment.student_name }}</span></div>
-            <div class="schema-row"><span class="schema-key">fee</span><span class="schema-val hi">₹ {{ enrollment.fee }}</span></div>
-          </div>
-
-          <!-- EXAM_USER -->
           {% if exam %}
           <div class="schema-block">
             <div class="schema-name">🎓 EXAM_USER · EXAM_ELIGIBILITY</div>
-            <div class="schema-row">
-              <span class="schema-key">is_eligible</span>
-              <span class="schema-val {{ 'pass' if exam.is_eligible == 'Y' else 'fail' }}">
-                {{ '✓ YES' if exam.is_eligible == 'Y' else '✗ NO' }}
-              </span>
-            </div>
-            <div class="schema-row">
-              <span class="schema-key">attendance</span>
-              <span class="schema-val {{ 'pass' if exam.min_attendance_pct >= 75 else 'fail' }}">
-                {{ exam.min_attendance_pct }}%
-              </span>
-            </div>
-            <div class="schema-row">
-              <span class="schema-key">fee_cleared</span>
-              <span class="schema-val {{ 'pass' if exam.fee_cleared == 'Y' else 'fail' }}">
-                {{ '✓ YES' if exam.fee_cleared == 'Y' else '✗ NO' }}
-              </span>
-            </div>
+            <div class="schema-row"><span class="schema-key">is_eligible</span><span class="schema-val {{ 'pass' if exam.is_eligible == 'Y' else 'fail' }}">{{ '✓ YES' if exam.is_eligible == 'Y' else '✗ NO' }}</span></div>
+            <div class="schema-row"><span class="schema-key">attendance</span><span class="schema-val {{ 'pass' if exam.min_attendance_pct >= 75 else 'fail' }}">{{ exam.min_attendance_pct }}%</span></div>
+            <div class="schema-row"><span class="schema-key">fee_cleared</span><span class="schema-val {{ 'pass' if exam.fee_cleared == 'Y' else 'fail' }}">{{ '✓ YES' if exam.fee_cleared == 'Y' else '✗ NO' }}</span></div>
           </div>
           {% endif %}
+          <div class="schema-block">
+            <div class="schema-name">👥 Enrolled Students ({{ per_student | length }})</div>
+            {% for s in per_student %}
+            {% set sp = s.results | selectattr("status","equalto","PASS") | list | count %}
+            {% set sf = s.results | selectattr("status","ne","PASS") | list | count %}
+            <div class="schema-row">
+              <span class="schema-key">{{ s.student_name }}</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--text3);">{{ s.enrollment.roll_no }}</span>
+              <span class="schema-val">₹ {{ s.enrollment.fee }}</span>
+              <span style="margin-left:auto;font-size:.72rem;">
+                <span style="color:var(--pass);">✓{{ sp }}</span>
+                {% if sf > 0 %}<span style="color:var(--fail);"> ✗{{ sf }}</span>{% endif %}
+              </span>
+            </div>
+            {% endfor %}
+          </div>
         </div>
         {% endif %}
 
-        <!-- Recommendations -->
         {% if report and report.recommendations %}
         <div class="panel" style="animation: fadeUp .4s ease .3s both;">
           <div class="panel-title">📌 Recommendations</div>
@@ -785,81 +784,97 @@
 
       </div><!-- /LEFT -->
 
-      <!-- RIGHT: Rule Cards -->
-      <div>
+      <!-- RIGHT: Per-student rule cards + SQL rules -->
+      <div style="display:flex;flex-direction:column;gap:16px;">
+
+        <!-- Per-student results -->
+        {% for student in per_student %}
+        {% set sp = student.results | selectattr("status","equalto","PASS") | list | count %}
+        {% set sf = student.results | selectattr("status","ne","PASS") | list | count %}
         <div class="panel" style="animation: fadeUp .4s ease .2s both;">
-          <div class="panel-title">Rule Evaluation — {{ results | length }} rules</div>
+          <div class="panel-title" style="display:flex;align-items:center;gap:10px;">
+            <span>👤 {{ student.student_name }}</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--accent);">{{ student.enrollment.roll_no }}</span>
+            <span style="font-size:.75rem;color:var(--text3);">₹ {{ student.enrollment.fee }}</span>
+            <span style="margin-left:auto;display:flex;gap:6px;">
+              <span style="background:var(--pass-bg);color:var(--pass);border-radius:12px;padding:1px 10px;font-size:.72rem;">✓ {{ sp }}</span>
+              {% if sf > 0 %}<span style="background:var(--fail-bg);color:var(--fail);border-radius:12px;padding:1px 10px;font-size:.72rem;">✗ {{ sf }}</span>{% endif %}
+            </span>
+          </div>
 
-          {% for r in results %}
+          {% for r in student.results %}
           {% set card_class = 'pass' if r.status == 'PASS' else ('error' if 'ERROR' in r.status else 'fail') %}
-          <div class="rule-card {{ card_class }}" style="animation-delay: {{ loop.index0 * 0.08 }}s;">
-
-            <!-- Top row -->
+          <div class="rule-card {{ card_class }}" style="animation-delay: {{ loop.index0 * 0.06 }}s;">
             <div class="rule-top">
               <div class="rule-left">
                 <span class="tag tag-id">{{ r.rule_id }}</span>
                 <span class="tag tag-sev-{{ r.severity | lower }}">{{ r.severity }}</span>
-                {% if r.sources %}
-                  {% for src in r.sources %}<span class="tag tag-src">{{ src }}</span>{% endfor %}
-                {% endif %}
               </div>
-              <div class="status-pill {{ card_class }}">
-                {{ '✓ PASS' if r.status == 'PASS' else ('⚠ ERROR' if 'ERROR' in r.status else '✗ FAIL') }}
-              </div>
+              <div class="status-pill {{ card_class }}">{{ '✓ PASS' if r.status == 'PASS' else ('⚠ ERROR' if 'ERROR' in r.status else '✗ FAIL') }}</div>
             </div>
-
-            <!-- Description -->
             <div class="rule-desc">{{ r.description }}</div>
-
-            <!-- Condition -->
-            <div class="rule-condition">if {{ r.condition }}</div>
-
-            <!-- ★ Actual vs Expected (only on FAIL with comparison data) -->
             {% if r.status != 'PASS' and r.comparison and r.comparison.lhs_val is defined %}
             <div class="comparison-row">
               <div class="cmp-box actual">
-                <div class="cmp-label">Current Value (Actual)</div>
+                <div class="cmp-label">Actual</div>
                 <div class="cmp-expr">{{ r.comparison.lhs_expr }}</div>
                 <div class="cmp-value">{{ r.comparison.lhs_val }}</div>
               </div>
               <div class="cmp-arrow">{{ r.comparison.operator }}<br>?</div>
               <div class="cmp-box expected">
-                <div class="cmp-label">Required Value (Expected)</div>
+                <div class="cmp-label">Expected</div>
                 <div class="cmp-expr">{{ r.comparison.rhs_expr }}</div>
                 <div class="cmp-value">{{ r.comparison.rhs_val }}</div>
               </div>
             </div>
             {% endif %}
-
-            <!-- LLM Reason -->
-            <div class="reason-box">
-              <span class="reason-icon">🤖</span>
-              <span>{{ r.reason }}</span>
-            </div>
-
-            <!-- On Failure -->
+            <div class="reason-box"><span class="reason-icon">🤖</span><span>{{ r.reason }}</span></div>
             {% if r.status != 'PASS' %}
-            <div class="fix-box">
-              <span>🔧</span>
-              <span><strong>Fix:</strong> {{ r.on_failure }}</span>
-            </div>
+            <div class="fix-box"><span>🔧</span><span><strong>Fix:</strong> {{ r.on_failure }}</span></div>
             {% endif %}
-
           </div>
           {% endfor %}
 
-        </div><!-- /panel -->
+        </div>
+        {% endfor %}
+
+        <!-- SQL / Aggregate rules (course-wide) -->
+        {% if sql_results %}
+        <div class="panel" style="animation: fadeUp .4s ease .3s both;">
+          <div class="panel-title">🗄 Course-Wide SQL Rules ({{ sql_results | length }})</div>
+          {% for r in sql_results %}
+          {% set card_class = 'pass' if r.status == 'PASS' else ('error' if 'ERROR' in r.status else 'fail') %}
+          <div class="rule-card {{ card_class }}">
+            <div class="rule-top">
+              <div class="rule-left">
+                <span class="tag tag-id">{{ r.rule_id }}</span>
+                <span class="tag tag-sev-{{ r.severity | lower }}">{{ r.severity }}</span>
+                <span class="tag tag-src">sql</span>
+              </div>
+              <div class="status-pill {{ card_class }}">{{ '✓ PASS' if r.status == 'PASS' else ('⚠ ERROR' if 'ERROR' in r.status else '✗ FAIL') }}</div>
+            </div>
+            <div class="rule-desc">{{ r.description }}</div>
+            <div class="rule-condition">{{ r.condition }}</div>
+            <div class="reason-box"><span class="reason-icon">🤖</span><span>{{ r.reason }}</span></div>
+            {% if r.status != 'PASS' %}
+            <div class="fix-box"><span>🔧</span><span><strong>Fix:</strong> {{ r.on_failure }}</span></div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
       </div><!-- /RIGHT -->
 
     </div><!-- /results-grid -->
-    {% endif %}
+    {% endfor %}
 
     <!-- Empty state when no results yet -->
-    {% if not results and not error %}
+    {% if not all_results and not error %}
     <div style="text-align:center; padding:80px 20px; color:var(--text3); animation: fadeUp .6s ease;">
       <div style="font-size:3rem; margin-bottom:16px;">🛡</div>
       <div style="font-size:1rem; font-weight:600; color:var(--text2); margin-bottom:8px;">Ready to validate</div>
-      <div style="font-size:.85rem;">Enter a Course ID above or pick one from the sidebar</div>
+      <div style="font-size:.85rem;">Type a query above — e.g. <em style="color:var(--accent);">"validate Python Basics"</em> or <em style="color:var(--accent);">"check all courses"</em></div>
     </div>
     {% endif %}
 
@@ -880,9 +895,9 @@
 </div>
 
 <script>
-  // Quick course select
-  function setCourse(id) {
-    document.getElementById('course_id_input').value = id;
+  // Quick query select
+  function setQuery(text) {
+    document.getElementById('query_input').value = text;
     document.getElementById('validateForm').submit();
     startLoading();
   }
@@ -893,16 +908,6 @@
     btn.classList.add('loading');
     btn.disabled = true;
   }
-
-  // Animate health ring on load
-  window.addEventListener('DOMContentLoaded', () => {
-    const ring = document.getElementById('healthRing');
-    if (ring) {
-      const target = parseFloat(ring.getAttribute('stroke-dashoffset'));
-      ring.style.strokeDashoffset = '314.16';
-      setTimeout(() => { ring.style.strokeDashoffset = target; }, 100);
-    }
-  });
 </script>
 
 </body>

@@ -19,7 +19,7 @@ import time
 from langchain_groq import ChatGroq
 from langsmith import traceable
 from config import GROQ_API_KEY
-from db import get_course_catalog, get_enrollment, get_exam_eligibility, get_all_course_ids, execute_sql_rule
+from db import get_course_catalog, get_enrollment, get_exam_eligibility, get_all_course_ids, execute_sql_rule, get_all_enrollments_for_course, get_enrollment_by_roll_no, get_all_roll_nos
 from tools import python_eval, compute_rule_comparison
 
 
@@ -166,20 +166,26 @@ def _evaluate_sql_rule(
 # ─── Evaluate one rule ────────────────────────────────────────────────────────
 
 @traceable(name="evaluate_rule", tags=["validation"])
-def evaluate_single_rule(course_id: str, rule: dict, llm) -> dict:
+def evaluate_single_rule(course_id: str, rule: dict, llm,
+                         enrollment_override: dict = None) -> dict:
     """
     Evaluate ONE rule for a course:
       1. Fetch data from Oracle (Python)
       2. arithmetic rules → python_eval(); english rules → LLM evaluates
       3. LLM summarizes arithmetic rules; english rules include reason in evaluation
 
+    enrollment_override: if provided, use this dict instead of fetching from DB.
+                         Used for per-student validation loops.
+
     Special scope:
       scope="any_course" — rule PASSes if the condition is true for AT LEAST ONE
                            course in the database (not necessarily the submitted one).
     """
     catalog    = get_course_catalog(course_id)
-    enrollment = get_enrollment(course_id)
-    exam       = get_exam_eligibility(course_id)
+    enrollment = enrollment_override if enrollment_override else get_enrollment(course_id)
+    # Look up exam eligibility per-student using roll_no if available
+    roll_no    = enrollment.get("roll_no") if enrollment else None
+    exam       = get_exam_eligibility(course_id, roll_no=roll_no)
     rule_type  = rule.get("type", "arithmetic")
     rule_scope = rule.get("scope", "this_course")
 
@@ -268,48 +274,269 @@ def evaluate_single_rule(course_id: str, rule: dict, llm) -> dict:
     }
 
 
-# ─── Main entry point ─────────────────────────────────────────────────────────
 
-def run_validation_agent(course_id: str, rule_ids: list = None) -> list:
+# ─── Natural Language Query Parser ───────────────────────────────────────────
+
+def parse_natural_query(query_text: str, llm) -> dict:
     """
-    Run validation for a course — checks each rule ONE BY ONE.
+    Parse a plain English query into a structured validation request.
 
-    Parameters:
-        course_id : e.g. "C001"
-        rule_ids  : optional filter, e.g. ["R1", "R2"]
+    The user can type anything like:
+      - "validate Python Basics"
+      - "check all courses"
+      - "validate all rules for Charlie"
+      - "show me C001 and C002"
+      - "check only R1 for Data Science"
+      - "check all rules for roll no 2024ML004"
 
     Returns:
-        List of result dicts compatible with reporter.py and index.html
+        {
+          "course_ids":   ["C003"],   # course IDs to validate
+          "rule_ids":     "all",      # "all" or list like ["R1", "R2"]
+          "student_name": "Leo",      # "all", or a specific name like "Charlie"
+          "roll_no":      "2024ML004" # None, or the exact roll_no if mentioned
+        }
+    """
+    import re
+    from db import get_all_course_ids, get_course_catalog, get_all_enrollments_for_course
+
+    all_ids = get_all_course_ids()
+    all_roll_nos = get_all_roll_nos()   # e.g. ["2024CS001", ..., "2024ML004"]
+
+    # ── Fast-path: detect roll_no in query before calling the LLM ─────────────
+    # Pattern: 4-digit year + 2-letter dept code + 3-digit seq (e.g. 2024ML004)
+    roll_pattern = re.compile(r'\b(\d{4}[A-Za-z]{2}\d{3})\b')
+    roll_match   = roll_pattern.search(query_text)
+    detected_roll_no = None
+
+    if roll_match:
+        candidate = roll_match.group(1).upper()
+        # Normalise to match stored case (stored as-is, e.g. "2024ML004")
+        matched_roll = next(
+            (r for r in all_roll_nos if r.upper() == candidate), None
+        )
+        if matched_roll:
+            detected_roll_no = matched_roll
+            # Look up the student so we can resolve course_ids too
+            enroll = get_enrollment_by_roll_no(matched_roll)
+            if enroll:
+                return {
+                    "course_ids":   [enroll["course_id"]],
+                    "rule_ids":     "all",
+                    "student_name": enroll["student_name"],
+                    "roll_no":      matched_roll,
+                }
+    # ──────────────────────────────────────────────────────────────────────────
+
+    courses_context = []
+    all_students = set()
+    for cid in all_ids:
+        c = get_course_catalog(cid)
+        if c:
+            courses_context.append(f"{cid}: {c['course_name']} (fee={c['fee']})")
+        for e in get_all_enrollments_for_course(cid):
+            all_students.add(e["student_name"])
+
+    rulebook_path = os.path.join(os.path.dirname(__file__), "rulebook.json")
+    with open(rulebook_path) as f:
+        all_rules = json.load(f)["rules"]
+    rule_ids_available = [r["rule_id"] for r in all_rules]
+
+    prompt = f"""You are a university validation system assistant.
+
+Available courses:
+{chr(10).join(courses_context)}
+
+All enrolled students: {sorted(all_students)}
+All roll numbers: {all_roll_nos}
+
+Available rule IDs: {rule_ids_available}
+
+User query: "{query_text}"
+
+Extract:
+- course_ids: which courses to validate. Use ALL course IDs if user says "all", "every", or doesn't specify a course.
+- rule_ids: "all" unless user asks for specific rules (e.g. "only R1").
+- student_name: the exact student name if mentioned, otherwise "all".
+- roll_no: the roll number if mentioned (e.g. "2024ML004"), otherwise null.
+
+Your response MUST be a single, valid JSON object block with no markdown block around it and no python code or explanation. Do not wrap it in code. Output ONLY JSON.
+
+Few-shot examples:
+Query: "validate Python Basics"
+Response:
+{{
+  "course_ids": ["C001"],
+  "rule_ids": "all",
+  "student_name": "all",
+  "roll_no": null
+}}
+
+Query: "validate all rules for Charlie"
+Response:
+{{
+  "course_ids": ["C001", "C002", "C003"],
+  "rule_ids": "all",
+  "student_name": "Charlie",
+  "roll_no": null
+}}
+
+Query: "check all rules for roll no 2024ML004"
+Response:
+{{
+  "course_ids": ["C003"],
+  "rule_ids": "all",
+  "student_name": "Leo",
+  "roll_no": "2024ML004"
+}}
+
+Query: "{query_text}"
+Response:"""
+
+    try:
+        resp = llm.invoke(prompt)
+        content = str(resp.content).strip()
+
+        # Robust JSON extraction: find the outermost { ... }
+        start_idx = content.find('{')
+        end_idx = content.rfind('}')
+        if start_idx != -1 and end_idx != -1:
+            json_str = content[start_idx:end_idx+1]
+        else:
+            json_str = content
+
+        parsed = json.loads(json_str)
+
+        valid_ids = set(all_ids)
+        course_ids = parsed.get("course_ids", all_ids)
+        if isinstance(course_ids, str) and course_ids.upper() == "ALL":
+            course_ids = all_ids
+        else:
+            course_ids = [c for c in course_ids if c in valid_ids]
+            if not course_ids:
+                course_ids = all_ids
+
+        # Validate student_name
+        student_name = parsed.get("student_name", "all")
+        if isinstance(student_name, str) and student_name.lower() != "all":
+            matched = next((s for s in all_students if s.lower() == student_name.lower()), None)
+            student_name = matched if matched else "all"
+
+        # Validate roll_no
+        roll_no = parsed.get("roll_no") or detected_roll_no
+        if roll_no and roll_no not in all_roll_nos:
+            roll_no = None
+
+        return {
+            "course_ids":   course_ids,
+            "rule_ids":     parsed.get("rule_ids", "all"),
+            "student_name": student_name,
+            "roll_no":      roll_no,
+        }
+
+    except Exception:
+        return {"course_ids": all_ids, "rule_ids": "all", "student_name": "all", "roll_no": None}
+
+
+# ─── Main entry point ─────────────────────────────────────────────────────────
+
+def run_validation_agent(
+    course_id: str,
+    rule_ids: list = None,
+    student_name: str = "all",
+    roll_no: str = None
+) -> dict:
+    """
+    Run validation for a course, per student.
+
+    Parameters:
+        course_id    : e.g. "C001"
+        rule_ids     : optional filter e.g. ["R1", "R2"], or None for all
+        student_name : "all" (validate every student) or a specific name like "Charlie"
+        roll_no      : if provided, filter by this exact roll number (takes priority
+                       over student_name when both match different students)
+
+    Returns a dict:
+        {
+          "per_student": [
+            { "student_name": "Alice",  "enrollment": {...}, "results": [...] },
+            { "student_name": "Bob",    "enrollment": {...}, "results": [...] },
+          ],
+          "sql_results":  [ {rule_id, status, ...}, ... ],  # SQL rules run once per course
+        }
     """
     rulebook_path = os.path.join(os.path.dirname(__file__), "rulebook.json")
     with open(rulebook_path) as f:
-        rules = json.load(f)["rules"]
+        all_rules = json.load(f)["rules"]
 
     if rule_ids:
-        rules = [r for r in rules if r["rule_id"] in rule_ids]
+        all_rules = [r for r in all_rules if r["rule_id"] in rule_ids]
 
-    llm     = _get_llm()
-    results = []
+    # Split rules into per-student (arithmetic/english) and per-course (sql)
+    student_rules = [r for r in all_rules if r.get("type") != "sql"]
+    sql_rules     = [r for r in all_rules if r.get("type") == "sql"]
+
+    llm   = _get_llm()
+    exam  = get_exam_eligibility(course_id)   # course-level fallback for SQL rules
+    catalog = get_course_catalog(course_id)
+
+    # Fetch students to validate
+    all_enrollments = get_all_enrollments_for_course(course_id)
+
+    # roll_no filter takes priority — it is a unique key, so at most one match
+    if roll_no:
+        all_enrollments = [e for e in all_enrollments if e["roll_no"] == roll_no]
+        if not all_enrollments:
+            print(f"  ℹ  roll_no '{roll_no}' is not in course {course_id} — skipping.")
+            return {"per_student": [], "sql_results": []}
+    elif student_name != "all":
+        all_enrollments = [e for e in all_enrollments
+                           if e["student_name"].lower() == student_name.lower()]
+        if not all_enrollments:
+            # Student is not enrolled in this course — skip it entirely
+            print(f"  ℹ  '{student_name}' is not enrolled in {course_id} — skipping.")
+            return {"per_student": [], "sql_results": []}
 
     print(f"\n{'='*55}")
     print(f"  Validation Agent — Course: {course_id}")
-    print(f"  Evaluating: {[r['rule_id'] for r in rules]}")
-    print(f"  Engine: python_eval (arithmetic) + LLM (english)")
+    print(f"  Students: {[e['student_name'] for e in all_enrollments]}")
+    print(f"  Rules: {[r['rule_id'] for r in all_rules]}")
     print(f"{'='*55}\n")
 
-    for i, rule in enumerate(rules):
-        print(f"── {rule['rule_id']}: {rule['description']}")
+    # ── Evaluate per-student rules for each student ───────────────────────────
+    per_student = []
+    for enrollment in all_enrollments:
+        sname = enrollment["student_name"]
+        student_results = []
+        for i, rule in enumerate(student_rules):
+            result = evaluate_single_rule(course_id, rule, llm,
+                                          enrollment_override=enrollment)
+            icon = "✅" if result["status"] == "PASS" else "❌"
+            print(f"   [{sname}] {rule['rule_id']}: {icon} {result['status']}")
+            student_results.append(result)
+            if i < len(student_rules) - 1:
+                time.sleep(2)
+
+        per_student.append({
+            "student_name": sname,
+            "enrollment":   enrollment,
+            "results":      student_results,
+        })
+
+    # ── Evaluate SQL (aggregate) rules once per course ────────────────────────
+    sql_results = []
+    for i, rule in enumerate(sql_rules):
         result = evaluate_single_rule(course_id, rule, llm)
-        icon   = "✅" if result["status"] == "PASS" else "❌"
-        print(f"   {icon} {result['status']} — {result['reason']}\n")
-        results.append(result)
+        icon = "✅" if result["status"] == "PASS" else "❌"
+        print(f"   [Course-wide SQL] {rule['rule_id']}: {icon} {result['status']}")
+        sql_results.append(result)
+        if i < len(sql_rules) - 1:
+            time.sleep(2)
 
-        if i < len(rules) - 1:
-            time.sleep(3)
-
-    passed = sum(1 for r in results if r["status"] == "PASS")
-    print(f"{'='*55}")
-    print(f"  Result: {passed}/{len(results)} rules passed for {course_id}")
+    total_results = [r for s in per_student for r in s["results"]] + sql_results
+    passed = sum(1 for r in total_results if r["status"] == "PASS")
+    print(f"\n{'='*55}")
+    print(f"  Result: {passed}/{len(total_results)} rule checks passed for {course_id}")
     print(f"{'='*55}\n")
 
-    return results
+    return {"per_student": per_student, "sql_results": sql_results}
