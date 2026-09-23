@@ -39,7 +39,7 @@ def _get_llm():
     )
 
 
-# ─── LLM summary — single call, no tool loop ─────────────────────────────────
+# ─── LLM summary — single call, no tool loop ────────────────────────────────
 
 @traceable(name="llm_summarize")
 def _summarize(llm, rule: dict, status: str, catalog: dict, enrollment: dict, exam: dict) -> str:
@@ -160,6 +160,7 @@ def _evaluate_sql_rule(
         return status, reason
 
     except Exception as e:
+        print(f"   ⚠  SQL rule {rule.get('rule_id')} error: {e}")
         return "ERROR", f"SQL execution error — {e}"
 
 
@@ -330,15 +331,38 @@ def parse_natural_query(query_text: str, llm) -> dict:
         r'|\b(?:rules?\s+)(\d+)\b',             # "rule 1", "rules 2"
         re.IGNORECASE
     )
-    rule_matches = rule_pattern.findall(query_text)
+    # Pattern to check for preceding exclusion words
+    exclude_pattern = re.compile(
+        r'\b(?:except(?:\s+for)?|exclud(?:e|ing)|skip(?:ping)?|without|but\s+not)\b',
+        re.IGNORECASE
+    )
+
+    rule_matches = list(rule_pattern.finditer(query_text))
     detected_rule_ids = None
-    if rule_matches:
-        nums = [m[0] or m[1] for m in rule_matches if (m[0] or m[1])]
-        candidates = [f"R{n}" for n in nums]
-        # Keep only valid rule IDs that exist in the rulebook
-        valid_detected = [c for c in candidates if c in rule_ids_available]
-        if valid_detected:
-            detected_rule_ids = valid_detected
+    excluded_rule_ids = []
+    included_rule_ids = []
+
+    for match in rule_matches:
+        start = match.start()
+        # Look at the text leading up to this match (up to 25 chars before)
+        preceding_text = query_text[max(0, start - 25):start]
+        is_excluded = bool(exclude_pattern.search(preceding_text))
+
+        groups = match.groups()
+        num = groups[0] or groups[1]
+        if num:
+            candidate = f"R{num}"
+            if candidate in rule_ids_available:
+                if is_excluded:
+                    excluded_rule_ids.append(candidate)
+                else:
+                    included_rule_ids.append(candidate)
+
+    if excluded_rule_ids and not included_rule_ids:
+        # Run all rules except the excluded ones
+        detected_rule_ids = [r for r in rule_ids_available if r not in excluded_rule_ids]
+    elif included_rule_ids:
+        detected_rule_ids = included_rule_ids
 
     # ── If roll_no was found, return immediately (no LLM needed) ─────────────
     if detected_roll_no:

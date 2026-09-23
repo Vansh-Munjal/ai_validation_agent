@@ -12,7 +12,7 @@ Each function in this file connects to the correct schema using
 that schema's own credentials. This simulates three completely
 independent university sub-systems.
 
-The rest of the project (validator.py, app.py, rulebook.json)
+The rest of the project (agent.py, app.py, rulebook.json)
 is UNCHANGED — only this file knows about the multi-schema setup.
 """
 
@@ -312,36 +312,39 @@ def get_admin_connection():
     )
 
 
+def is_safe_sql(sql: str) -> bool:
+    """
+    Check if a SQL statement is safe (read-only SELECT, no DDL/DML, no semicolons).
+    """
+    import re
+    cleaned = re.sub(r'--.*$', '', sql, flags=re.MULTILINE)
+    cleaned = re.sub(r'/\*[\s\S]*?\*/', '', cleaned)
+    cleaned = cleaned.strip().upper()
+
+    if not cleaned.startswith('SELECT'):
+        return False
+
+    if ';' in cleaned:
+        return False
+
+    bad_words_pattern = re.compile(
+        r'\b(DROP|TRUNCATE|DELETE|UPDATE|INSERT|ALTER|RENAME|CREATE|MERGE|REPLACE|GRANT|REVOKE)\b',
+        re.IGNORECASE
+    )
+    if bad_words_pattern.search(cleaned):
+        return False
+
+    return True
+
+
 def execute_sql_rule(sql: str, course_id: str = None) -> dict:
     """
     Execute a SQL validation rule against Oracle using the admin connection.
-
-    Supports ALL Oracle SQL features:
-      - Aggregates  : COUNT, SUM, AVG, MAX, MIN, COUNT(DISTINCT ...)
-      - Set ops     : DISTINCT, UNION, INTERSECT, MINUS
-      - Grouping    : GROUP BY, HAVING
-      - Window fns  : RANK() OVER (...), ROW_NUMBER() OVER (...),
-                      DENSE_RANK(), LEAD(), LAG(), NTILE()
-      - Cross-schema: JOIN across CATALOG_USER, ENROLL_USER, EXAM_USER
-
-    SQL CONTRACT — the query MUST return exactly one row with one numeric column:
-        1  →  rule PASSES
-        0  →  rule FAILS
-
-    Use :course_id as a bind variable when filtering by the current course (optional).
-
-    Example (count distinct students per course must equal 1):
-        SELECT CASE WHEN COUNT(DISTINCT student_name) = 1 THEN 1 ELSE 0 END
-        FROM ENROLL_USER.ENROLLMENT
-        WHERE course_id = :course_id
-
-    Returns:
-        {
-          "passed":       bool,
-          "result_value": int | None,  # raw value returned by SQL
-          "sql":          str          # the executed SQL (for debugging)
-        }
+    ...
     """
+    if not is_safe_sql(sql):
+        raise ValueError("Insecure SQL statement rejected: Only read-only SELECT queries are allowed.")
+
     conn = get_admin_connection()
     try:
         cursor = conn.cursor()

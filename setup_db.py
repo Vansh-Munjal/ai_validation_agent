@@ -188,7 +188,7 @@ def setup_enroll_schema():
         # ── C002: Data Science Advanced (catalog.fee = 8000) ──────────────────
         (5,  "2024DS001", "C002", "Eve",     9700),  # 9700-8000=1700 → PASS R1
         (6,  "2024DS002", "C002", "Frank",   8000),  # 8000-8000=0    → FAIL R1
-        (7,  "2024DS003", "C002", "Grace",   9700),  # 9700-8000=1700 → PASS R1
+        (7,  "2024DS003", "C002", "Eve",   9700),  # 9700-8000=1700 → PASS R1
         (8,  "2024DS004", "C002", "Henry",   9500),  # 9500-8000=1500 → FAIL R1
 
         # ── C003: Machine Learning Intro (catalog.fee = 12000) ────────────────
@@ -209,7 +209,7 @@ def setup_enroll_schema():
     conn.close()
     print("  ✓ Sample data inserted into ENROLL_USER.ENROLLMENT")
     print("    C001 | 2024CS001-004 | Alice, Bob, Charlie, Diana   (4 students)")
-    print("    C002 | 2024DS001-004 | Eve, Frank, Grace, Henry     (4 students)")
+    print("    C002 | 2024DS001-004 | Eve, Frank, Eve, Henry     (4 students)")
     print("    C003 | 2024ML001-004 | Ivy, Jack, Kate, Leo         (4 students)")
     print("    Total: 12 enrollment rows\n")
 
@@ -267,7 +267,7 @@ def setup_exam_schema():
         # ── C002: Data Science Advanced ───────────────────────────────────────
         (5,  "2024DS001", "C002", "Y", 85, "Y"),  # Eve     — good standing
         (6,  "2024DS002", "C002", "Y", 78, "N"),  # Frank   — fee not cleared
-        (7,  "2024DS003", "C002", "Y", 92, "Y"),  # Grace   — good standing
+        (7,  "2024DS003", "C002", "Y", 92, "Y"),  # Eve   — good standing
         (8,  "2024DS004", "C002", "N", 65, "N"),  # Henry   — low attendance
 
         # ── C003: Machine Learning Intro ──────────────────────────────────────

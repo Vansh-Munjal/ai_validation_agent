@@ -10,16 +10,23 @@
 
 [R1]
 The enrollment fee must be exactly Rs.1700 more than the catalog fee.
-The enrollment fee must be divisible by 250 with no remainder.
-The ratio of enrollment fee to catalog fee must be greater than 1.0 and at most 1.5.
-The student's attendance percentage must be at least 75 and at most 100.
-The value of attendance percentage multiplied by enrollment fee divided by 100 must be greater than or equal to the catalog fee minus 200.
 
 [R2]
-If the course name contains the word 'Basics' or 'Intro', the student qualifies for the exam if their attendance percentage is 75 or higher, even if the exam fee is not cleared.
-For all other courses, the student must have cleared the exam fee (fee_cleared = Y) and must also be marked as eligible (is_eligible = Y).
+If the course name contains the word 'Basics' or 'Intro', the student qualifies for the exam
+if their attendance percentage is 75 or higher, even if the exam fee is not cleared.
+For all other courses, the student must have cleared the exam fee and must also be marked as eligible.
 Severity is HIGH.
 
-[R3] 
-Each course must have exactly two student enrolled.
+[R3]
+Each course must have exactly 2 students enrolled.
+Severity is HIGH.
+
+[R4]
+At least 2 students in the same course must share the same name.
+Severity is HIGH.
+
+[R5]
+There must be no course_id present in the enrollment table that is missing from the exam eligibility table,
+and there must be no course_id present in the exam eligibility table that is missing from the enrollment table.
+Severity is HIGH.
 

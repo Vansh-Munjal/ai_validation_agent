@@ -3,23 +3,22 @@
     {
       "rule_id": "R1",
       "type": "arithmetic",
-      "description": "The enrollment fee must satisfy multiple conditions relative to the catalog fee and attendance percentage",
-      "condition": "(enrollment.fee - catalog.fee) == 1700 and enrollment.fee % 250 == 0 and 1.0 < (enrollment.fee / catalog.fee) <= 1.5 and 75 <= exam.min_attendance_pct <= 100 and (exam.min_attendance_pct * enrollment.fee / 100) >= (catalog.fee - 200)",
-      "severity": "HIGH",
-      "on_failure": "Adjust the enrollment fee to meet the specified conditions",
+      "description": "enrollment fee must be exactly Rs.1700 more than the catalog fee",
+      "condition": "enrollment.fee - catalog.fee == 1700",
+      "severity": "error",
+      "on_failure": "fail",
       "data_sources": [
         "catalog",
-        "enrollment",
-        "exam"
+        "enrollment"
       ]
     },
     {
       "rule_id": "R2",
       "type": "english",
-      "description": "Student qualifies for the exam based on course name and attendance or fee clearance and eligibility",
-      "condition": "Check whether the course name contains 'Basics' or 'Intro' and the student's attendance percentage is 75 or higher, or if the course name does not contain 'Basics' or 'Intro', then the student must have cleared the exam fee and be marked as eligible",
+      "description": "Check whether the course name contains 'Basics' or 'Intro' and attendance is >= 75, or the exam fee is cleared and the student is marked eligible.",
+      "condition": "Check whether the course name contains 'Basics' or 'Intro' and attendance is >= 75, or the exam fee is cleared and the student is marked eligible.",
       "severity": "HIGH",
-      "on_failure": "The student does not qualify for the exam due to insufficient attendance or uncleared exam fee or ineligibility",
+      "on_failure": "Fail the validation",
       "data_sources": [
         "catalog",
         "enrollment",
@@ -29,12 +28,35 @@
     {
       "rule_id": "R3",
       "type": "sql",
-      "description": "Each course must have at least 4 students enrolled with distinct roll numbers.",
-      "condition": "SELECT CASE WHEN COUNT(DISTINCT roll_no) >= 4 THEN 1 ELSE 0 END FROM ENROLL_USER.ENROLLMENT WHERE course_id = :course_id",
+      "description": "Each course must have exactly 2 students enrolled.",
+      "condition": "SELECT CASE WHEN COUNT(*) = 2 THEN 1 ELSE 0 END FROM (SELECT student_name FROM ENROLL_USER.ENROLLMENT WHERE course_id = :course_id GROUP BY student_name HAVING COUNT(*) >= 2)",
       "severity": "HIGH",
-      "on_failure": "Enroll more students until at least 4 students with unique roll numbers are in this course.",
+      "on_failure": "Error",
       "data_sources": [
-        "enrollment"
+        "ENROLL_USER.ENROLLMENT"
+      ]
+    },
+    {
+      "rule_id": "R4",
+      "type": "sql",
+      "description": "At least 2 students in the same course must share the same name",
+      "condition": "SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM (SELECT student_name FROM ENROLL_USER.ENROLLMENT WHERE course_id = :course_id GROUP BY student_name HAVING COUNT(*) >= 2)",
+      "severity": "HIGH",
+      "on_failure": "Error",
+      "data_sources": [
+        "ENROLL_USER.ENROLLMENT"
+      ]
+    },
+    {
+      "rule_id": "R5",
+      "type": "sql",
+      "description": "No course_id present in enrollment table missing from exam eligibility table, and vice versa",
+      "condition": "SELECT CASE WHEN COUNT(*) = 0 THEN 1 ELSE 0 END FROM (SELECT course_id FROM ENROLL_USER.ENROLLMENT MINUS SELECT course_id FROM EXAM_USER.EXAM_ELIGIBILITY UNION ALL SELECT course_id FROM EXAM_USER.EXAM_ELIGIBILITY MINUS SELECT course_id FROM ENROLL_USER.ENROLLMENT)",
+      "severity": "HIGH",
+      "on_failure": "Error",
+      "data_sources": [
+        "ENROLL_USER.ENROLLMENT",
+        "EXAM_USER.EXAM_ELIGIBILITY"
       ]
     }
   ]

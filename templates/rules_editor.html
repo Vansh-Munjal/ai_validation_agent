@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="AI Validation Agent — Rules Editor. Write and compile plain English validation rules." />
+  <title>Rules Editor · AI Validation Agent</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg:#080b14; --surface:#0e1120; --surface2:#141827; --surface3:#1a2035;
+      --border:rgba(99,120,255,.15); --border-hi:rgba(99,120,255,.5);
+      --accent:#6378ff; --accent2:#a78bfa; --glow:rgba(99,120,255,.22);
+      --pass:#10d9a0; --pass-bg:rgba(16,217,160,.1); --pass-brd:rgba(16,217,160,.3);
+      --fail:#ff5272; --fail-bg:rgba(255,82,114,.1); --fail-brd:rgba(255,82,114,.3);
+      --warn:#fbbf24; --warn-bg:rgba(251,191,36,.1); --warn-brd:rgba(251,191,36,.3);
+      --text:#e2e6f3; --text2:#8892b0; --text3:#404870;
+      --r:16px; --r-sm:10px; --r-xs:6px;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth}
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+
+    .layout{display:flex;min-height:100vh;}
+
+    .sidebar{
+      width:240px;flex-shrink:0;background:var(--surface);
+      border-right:1px solid var(--border);padding:28px 20px;
+      display:flex;flex-direction:column;gap:28px;
+      position:sticky;top:0;height:100vh;overflow-y:auto;
+    }
+    .brand{display:flex;align-items:center;gap:10px;}
+    .brand-icon{
+      width:34px;height:34px;border-radius:9px;
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;
+    }
+    .brand-name{font-size:.85rem;font-weight:700;line-height:1.3;}
+    .brand-sub{font-size:.65rem;color:var(--text2);font-weight:400;}
+
+    .sidebar-label{
+      font-size:.62rem;font-weight:700;letter-spacing:.1em;
+      text-transform:uppercase;color:var(--text3);margin-bottom:6px;
+    }
+    .nav-link{
+      display:flex;align-items:center;gap:10px;padding:10px 14px;
+      border-radius:var(--r-sm);font-size:.83rem;font-weight:500;
+      text-decoration:none;color:var(--text2);
+      border:1px solid var(--border);background:var(--surface2);transition:all .2s;
+    }
+    .nav-link:hover{border-color:var(--accent);color:var(--text);background:rgba(99,120,255,.08);}
+    .nav-link.active{border-color:var(--accent2);color:var(--accent2);background:rgba(167,139,250,.1);}
+
+    .sidebar-hint{
+      margin-top:auto;padding:14px;background:var(--surface2);
+      border:1px solid var(--border);border-radius:var(--r-sm);
+      font-size:.72rem;color:var(--text2);line-height:1.7;
+    }
+    .hint-step{display:flex;gap:8px;margin-bottom:8px;}
+    .hint-num{
+      width:18px;height:18px;border-radius:50%;
+      background:var(--glow);border:1px solid var(--accent);color:var(--accent);
+      font-size:.6rem;font-weight:700;display:flex;align-items:center;justify-content:center;
+      flex-shrink:0;margin-top:1px;
+    }
+
+    .main{flex:1;padding:36px 40px;overflow-x:hidden;display:flex;flex-direction:column;gap:24px;}
+
+    .page-header{animation:fadeDown .5s ease both;}
+    .page-header h1{
+      font-size:clamp(1.4rem,3vw,1.9rem);font-weight:800;
+      background:linear-gradient(135deg,#e2e6f3 0%,#a78bfa 50%,#6378ff 100%);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+      margin-bottom:6px;
+    }
+    .page-header p{font-size:.88rem;color:var(--text2);}
+
+    .sync-banner{
+      display:flex;align-items:center;gap:12px;padding:14px 18px;
+      background:var(--warn-bg);border:1px solid var(--warn-brd);
+      border-radius:var(--r-sm);font-size:.83rem;color:var(--warn);
+      animation:fadeDown .4s ease both;
+    }
+
+    .editor-layout{
+      display:grid;grid-template-columns:1fr 1fr;gap:24px;flex:1;min-height:0;
+    }
+    @media(max-width:900px){.editor-layout{grid-template-columns:1fr;}}
+
+    .panel{
+      background:var(--surface);border:1px solid var(--border);
+      border-radius:var(--r);display:flex;flex-direction:column;
+      overflow:hidden;animation:fadeUp .5s ease both;
+    }
+    .panel-header{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:16px 20px;border-bottom:1px solid var(--border);
+      background:var(--surface2);flex-shrink:0;
+    }
+    .panel-title{font-size:.88rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px;}
+    .panel-subtitle{font-size:.7rem;color:var(--text2);margin-top:2px;}
+    .panel-actions{display:flex;gap:8px;}
+
+    .btn{
+      display:inline-flex;align-items:center;gap:6px;padding:8px 16px;
+      border-radius:8px;font-family:'Inter',sans-serif;font-size:.8rem;font-weight:600;
+      cursor:pointer;border:none;transition:all .2s;white-space:nowrap;
+    }
+    .btn-save{background:rgba(99,120,255,.15);border:1px solid rgba(99,120,255,.4);color:var(--accent);}
+    .btn-save:hover{background:rgba(99,120,255,.25);border-color:var(--accent);}
+    .btn-add{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.35);color:var(--accent2);}
+    .btn-add:hover{background:rgba(167,139,250,.22);border-color:var(--accent2);}
+    .btn-compile{
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      color:#fff;border:none;box-shadow:0 4px 16px rgba(99,120,255,.35);
+    }
+    .btn-compile:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(99,120,255,.5);}
+    .btn-compile:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+    .btn-clear{background:rgba(255,82,114,.1);border:1px solid rgba(255,82,114,.3);color:var(--fail);}
+    .btn-clear:hover{background:rgba(255,82,114,.2);}
+
+    .editor-body{flex:1;display:flex;flex-direction:column;min-height:0;}
+    #rules-textarea{
+      flex:1;width:100%;padding:20px;background:var(--bg);color:#c9d1e8;
+      font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.75;
+      border:none;outline:none;resize:none;min-height:480px;tab-size:2;
+    }
+    #rules-textarea::placeholder{color:var(--text3);}
+    .editor-footer{
+      padding:10px 20px;border-top:1px solid var(--border);background:var(--surface2);
+      font-size:.72rem;color:var(--text2);display:flex;align-items:center;justify-content:space-between;
+      flex-shrink:0;
+    }
+    .save-status{display:flex;align-items:center;gap:6px;font-size:.72rem;}
+    .save-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);transition:background .3s;}
+    .save-dot.saved{background:var(--pass);}
+    .save-dot.unsaved{background:var(--warn);}
+    .save-dot.saving{background:var(--accent);animation:pulse 1s infinite;}
+
+    .log-body{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px;min-height:0;}
+    .log-empty{
+      flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+      color:var(--text3);font-size:.82rem;gap:10px;text-align:center;padding:40px;
+    }
+    .log-empty-icon{font-size:2.4rem;opacity:.5;}
+
+    .log-entry{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden;animation:fadeUp .3s ease both;}
+    .log-entry.ok{border-color:var(--pass-brd);}
+    .log-entry.err{border-color:var(--fail-brd);}
+    .log-entry-header{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;user-select:none;}
+    .log-entry.ok .log-entry-header{background:var(--pass-bg);}
+    .log-entry.err .log-entry-header{background:var(--fail-bg);}
+    .log-rule-id{font-family:'JetBrains Mono',monospace;font-size:.78rem;font-weight:600;padding:2px 8px;border-radius:4px;background:var(--surface3);}
+    .log-entry.ok .log-rule-id{color:var(--pass);}
+    .log-entry.err .log-rule-id{color:var(--fail);}
+    .log-status-icon{font-size:.95rem;margin-left:auto;}
+    .log-type-badge{font-size:.65rem;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:.05em;text-transform:uppercase;}
+    .badge-arithmetic{background:rgba(99,120,255,.15);color:var(--accent);}
+    .badge-english{background:rgba(167,139,250,.15);color:var(--accent2);}
+    .badge-sql{background:rgba(16,217,160,.12);color:var(--pass);}
+    .badge-error{background:var(--fail-bg);color:var(--fail);}
+    .log-entry-body{padding:12px 14px;border-top:1px solid var(--border);font-size:.75rem;color:var(--text2);line-height:1.65;display:none;}
+    .log-entry-body.open{display:block;}
+    .log-field{margin-bottom:8px;}
+    .log-field-label{font-size:.65rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;}
+    .log-condition{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:#c9d1e8;background:var(--bg);padding:8px 10px;border-radius:6px;border:1px solid var(--border);white-space:pre-wrap;word-break:break-all;}
+
+    .compile-progress{display:none;align-items:center;gap:12px;padding:14px 18px;background:rgba(99,120,255,.08);border:1px solid var(--border-hi);border-radius:var(--r-sm);font-size:.83rem;color:var(--accent);margin:0 20px 4px;}
+    .spinner{width:16px;height:16px;border:2px solid rgba(99,120,255,.3);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0;}
+    .compile-summary{display:none;padding:12px 18px;border-radius:var(--r-sm);font-size:.82rem;font-weight:600;align-items:center;gap:10px;margin:0 20px 4px;}
+    .compile-summary.ok{background:var(--pass-bg);border:1px solid var(--pass-brd);color:var(--pass);}
+    .compile-summary.err{background:var(--fail-bg);border:1px solid var(--fail-brd);color:var(--fail);}
+
+    @keyframes fadeDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  </style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-icon">&#128737;</div>
+      <div>
+        <div class="brand-name">Validation<br>Agent</div>
+        <div class="brand-sub">AI &middot; Oracle &middot; Rules</div>
+      </div>
+    </div>
+    <div>
+      <div class="sidebar-label">Navigation</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <a href="/" class="nav-link">&#9664; Back to Validator</a>
+        <a href="/rules" class="nav-link active">&#9881; Rules Editor</a>
+      </div>
+    </div>
+    <div class="sidebar-hint">
+      <div class="sidebar-label" style="margin-bottom:10px;">How it works</div>
+      <div class="hint-step"><div class="hint-num">1</div><div>Write rules in plain English in the editor</div></div>
+      <div class="hint-step"><div class="hint-num">2</div><div>Click <strong style="color:var(--accent);">Save</strong> to save to rules.txt</div></div>
+      <div class="hint-step"><div class="hint-num">3</div><div>Click <strong style="color:var(--accent2);">Compile</strong> &mdash; LLM translates to JSON</div></div>
+      <div class="hint-step"><div class="hint-num">4</div><div>Validator picks up new rules <strong style="color:var(--pass);">instantly</strong></div></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-header">
+      <h1>&#9881; Rules Editor</h1>
+      <p>Write validation rules in plain English &mdash; the AI compiler converts them to structured JSON automatically.</p>
+    </div>
+
+    {% if needs_compile %}
+    <div class="sync-banner" id="syncBanner">
+      <span style="font-size:1.1rem;flex-shrink:0;">&#9888;&#65039;</span>
+      <div><strong>rules.txt has uncompiled changes.</strong> Your rulebook.json may be out of sync. Click <strong>Compile</strong> to update it.</div>
+      <button onclick="this.parentElement.style.display='none'" style="margin-left:auto;background:none;border:none;color:var(--warn);cursor:pointer;font-size:1rem;">&#10005;</button>
+    </div>
+    {% endif %}
+
+    <div class="editor-layout">
+
+      <!-- Left: Editor -->
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">&#128221; rules.txt Editor</div>
+            <div class="panel-subtitle">Write each rule in a [R1], [R2] block &mdash; plain English only</div>
+          </div>
+          <div class="panel-actions">
+            <button class="btn btn-add" onclick="addNewRule()">+ Add Rule</button>
+            <button class="btn btn-save" onclick="saveRules()" id="saveBtn">&#128190; Save</button>
+          </div>
+        </div>
+        <div class="editor-body">
+          <textarea id="rules-textarea" spellcheck="false" oninput="markUnsaved()" placeholder="[R1]&#10;Write your rule here in plain English.&#10;&#10;[R2]&#10;Another rule...">{{ rules_content }}</textarea>
+        </div>
+        <div class="editor-footer">
+          <div class="save-status">
+            <div class="save-dot saved" id="saveDot"></div>
+            <span id="saveLabel">Saved</span>
+          </div>
+          <span id="lineCount" style="color:var(--text3);">—</span>
+        </div>
+      </div>
+
+      <!-- Right: Log -->
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">&#129302; Compilation Log</div>
+            <div class="panel-subtitle">LLM translates each rule to structured JSON for the validator</div>
+          </div>
+          <div class="panel-actions">
+            <button class="btn btn-clear" onclick="clearLog()" id="clearBtn" style="display:none;">&#10005; Clear</button>
+            <button class="btn btn-compile" onclick="compileRules()" id="compileBtn">&#9654; Compile Rules</button>
+          </div>
+        </div>
+        <div class="compile-progress" id="compileProgress">
+          <div class="spinner"></div>
+          <span id="progressText">Sending rules to LLM...</span>
+        </div>
+        <div class="compile-summary" id="compileSummary"></div>
+        <div class="log-body" id="logBody">
+          <div class="log-empty">
+            <div class="log-empty-icon">&#129302;</div>
+            <div>No compilation run yet.</div>
+            <div style="font-size:.72rem;color:var(--text3);">Save your rules then click <strong style="color:var(--accent2);">Compile Rules</strong></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script>
+  const ta = document.getElementById('rules-textarea');
+  const saveDot = document.getElementById('saveDot');
+  const saveLabel = document.getElementById('saveLabel');
+  const lineCount = document.getElementById('lineCount');
+
+  function updateLineCount() {
+    const lines = ta.value.split('\n').length;
+    const rules = (ta.value.match(/^\[R\d+\]/gm) || []).length;
+    lineCount.textContent = lines + ' lines \u00b7 ' + rules + ' rule' + (rules !== 1 ? 's' : '');
+  }
+  updateLineCount();
+  ta.addEventListener('input', updateLineCount);
+
+  function markUnsaved() {
+    saveDot.className = 'save-dot unsaved';
+    saveLabel.textContent = 'Unsaved changes';
+  }
+
+  function addNewRule() {
+    const content = ta.value;
+    const matches = content.match(/\[R(\d+)\]/g) || [];
+    let nextNum = 1;
+    if (matches.length > 0) {
+      const nums = matches.map(m => parseInt(m.replace(/\[R|\]/g, '')));
+      nextNum = Math.max(...nums) + 1;
+    }
+    ta.value = content.trimEnd() + '\n\n[R' + nextNum + ']\n';
+    ta.focus();
+    ta.selectionStart = ta.selectionEnd = ta.value.length;
+    updateLineCount();
+    markUnsaved();
+  }
+
+  async function saveRules() {
+    const btn = document.getElementById('saveBtn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    saveDot.className = 'save-dot saving';
+    saveLabel.textContent = 'Saving...';
+    try {
+      const res = await fetch('/rules/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: ta.value }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        saveDot.className = 'save-dot saved';
+        saveLabel.textContent = 'Saved \u2713';
+        const banner = document.getElementById('syncBanner');
+        if (banner) banner.style.display = 'none';
+      } else {
+        saveDot.className = 'save-dot unsaved';
+        saveLabel.textContent = 'Save failed: ' + data.error;
+      }
+    } catch (e) {
+      saveDot.className = 'save-dot unsaved';
+      saveLabel.textContent = 'Network error';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '\ud83d\udcbe Save';
+    }
+  }
+
+  async function compileRules() {
+    const compileBtn = document.getElementById('compileBtn');
+    const progress = document.getElementById('compileProgress');
+    const summary = document.getElementById('compileSummary');
+    const logBody = document.getElementById('logBody');
+    const clearBtn = document.getElementById('clearBtn');
+
+    await saveRules();
+
+    compileBtn.disabled = true;
+    compileBtn.textContent = 'Compiling...';
+    progress.style.display = 'flex';
+    summary.style.display = 'none';
+    logBody.innerHTML = '';
+    clearBtn.style.display = 'none';
+
+    const ruleCount = (ta.value.match(/^\[R\d+\]/gm) || []).length;
+    document.getElementById('progressText').textContent =
+      'Compiling ' + ruleCount + ' rule' + (ruleCount !== 1 ? 's' : '') + ' \u2014 LLM processing, please wait...';
+
+    try {
+      const res = await fetch('/rules/compile', { method: 'POST' });
+      const data = await res.json();
+      progress.style.display = 'none';
+
+      if (data.error && (!data.log || data.log.length === 0)) {
+        summary.className = 'compile-summary err';
+        summary.style.display = 'flex';
+        summary.innerHTML = '\u274c Error: ' + data.error;
+        return;
+      }
+
+      (data.log || []).forEach(function(entry, i) {
+        const isOk = entry.status === 'ok';
+        const el = document.createElement('div');
+        el.className = 'log-entry ' + (isOk ? 'ok' : 'err');
+        el.style.animationDelay = (i * 80) + 'ms';
+
+        const typeBadge = isOk
+          ? '<span class="log-type-badge badge-' + entry.type + '">' + entry.type + '</span>'
+          : '<span class="log-type-badge badge-error">error</span>';
+
+        const sevColors = {HIGH:'var(--fail)',MEDIUM:'var(--warn)',LOW:'var(--pass)'};
+        const sevColor = sevColors[entry.severity] || 'var(--text2)';
+
+        const bodyHtml = isOk
+          ? '<div class="log-field"><div class="log-field-label">Description</div><div>' + entry.description + '</div></div>'
+          + '<div class="log-field"><div class="log-field-label">Condition</div><div class="log-condition">' + entry.condition + '</div></div>'
+          + '<div class="log-field"><div class="log-field-label">Severity</div><div style="color:' + sevColor + ';font-weight:600;">' + entry.severity + '</div></div>'
+          : '<div class="log-field"><div class="log-field-label">Error</div><div style="color:var(--fail);">' + (entry.error || '') + '</div></div>'
+          + '<div class="log-field"><div class="log-field-label">Rule Text</div><div style="color:var(--text2);">' + (entry.text || '\u2014') + '</div></div>';
+
+        const desc = isOk ? entry.description : (entry.error || '');
+        el.innerHTML =
+          '<div class="log-entry-header" onclick="this.nextElementSibling.classList.toggle(\'open\')">'
+          + '<span class="log-rule-id">' + entry.rule_id + '</span>'
+          + typeBadge
+          + '<span style="font-size:.78rem;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:4px;">' + desc + '</span>'
+          + '<span class="log-status-icon">' + (isOk ? '\u2705' : '\u274c') + '</span>'
+          + '</div>'
+          + '<div class="log-entry-body">' + bodyHtml + '</div>';
+
+        logBody.appendChild(el);
+      });
+
+      const allOk = data.ok && data.errors === 0;
+      summary.className = 'compile-summary ' + (allOk ? 'ok' : 'err');
+      summary.style.display = 'flex';
+      summary.innerHTML = allOk
+        ? '\u2705 All ' + data.compiled + ' rule' + (data.compiled !== 1 ? 's' : '') + ' compiled \u2014 rulebook.json updated!'
+        : '\u26a0\ufe0f ' + data.compiled + ' compiled, ' + data.errors + ' failed.';
+
+      clearBtn.style.display = 'inline-flex';
+    } catch (e) {
+      progress.style.display = 'none';
+      summary.className = 'compile-summary err';
+      summary.style.display = 'flex';
+      summary.innerHTML = '\u274c Network error: ' + e.message;
+    } finally {
+      compileBtn.disabled = false;
+      compileBtn.textContent = '\u25b6 Compile Rules';
+    }
+  }
+
+  function clearLog() {
+    document.getElementById('logBody').innerHTML =
+      '<div class="log-empty"><div class="log-empty-icon">&#129302;</div><div>No compilation run yet.</div></div>';
+    document.getElementById('compileSummary').style.display = 'none';
+    document.getElementById('clearBtn').style.display = 'none';
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveRules(); }
+  });
+</script>
+</body>
+</html>
